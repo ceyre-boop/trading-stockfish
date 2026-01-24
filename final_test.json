@@ -1,0 +1,15 @@
+{
+  "symbol": "EURUSD",
+  "period": "1H",
+  "timestamp": "2026-01-17T01:29:50.120818",
+  "elo_rating": 2469.9446098062726,
+  "confidence": 0.7589162271193199,
+  "strength_class": "Grandmaster",
+  "component_scores": {
+    "baseline": 1.0,
+    "stress_test": 0.8363874237310666,
+    "monte_carlo": 0.3055,
+    "regime_robustness": 0.709827222924568,
+    "walk_forward": 0.0
+  }
+}

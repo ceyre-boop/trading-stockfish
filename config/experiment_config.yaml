@@ -1,0 +1,65 @@
+# ========================================================================
+# EXPERIMENT CONFIGURATION - Phase 5 Research Cockpit
+# ========================================================================
+# 
+# This YAML file defines controlled experiments for systematic parameter
+# tuning of Trading Stockfish. Modify dimensions and ranges to customize
+# your experiment.
+#
+# ========================================================================
+
+# Experiment Metadata
+name: "macro_weight_tuning_v1"
+description: "Systematic sweep of macro evaluator weight with volatility and reversal thresholds"
+experiment_name: "macro_tuning_q1_2025"
+
+# Parameter Sweep Definitions
+# ========================================================================
+
+# Macro Weight (0.0 = ignore macro completely, 1.0 = macro-only)
+macro_weight_range: [0.0, 1.0]
+macro_weight_steps: 5  # 0.0, 0.25, 0.5, 0.75, 1.0
+
+# Volatility Threshold (for regime-aware position sizing)
+volatility_threshold_range: [0.01, 0.05]
+volatility_threshold_steps: 3  # 0.01, 0.03, 0.05
+
+# Reversal Threshold (for mean-reversion signals)
+reversal_threshold_range: [0.3, 0.7]
+reversal_threshold_steps: 3  # 0.3, 0.5, 0.7
+
+# Cooldown (minimum bars between trades)
+cooldown_range: [1, 10]
+cooldown_steps: 3  # 1, 5, 10
+
+# FOMC Trade Bans (test both on and off)
+fomc_trade_bans: [false, true]
+
+# Test Parameters
+# ========================================================================
+
+symbols:
+  - EURUSD
+  - GBPUSD
+  - XAUUSD
+
+start_date: "2023-01-01"
+end_date: "2024-12-31"
+
+# Walk-forward cross-validation
+walkforward_periods: 4  # Quarterly splits
+
+# Output
+# ========================================================================
+
+output_dir: "experiments"
+experiment_name: "macro_tuning_q1_2025"
+
+# Execution
+# ========================================================================
+
+# Run experiments in parallel (requires more resources)
+parallel: false
+max_workers: 4
+
+verbose: true

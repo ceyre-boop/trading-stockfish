@@ -1,0 +1,15 @@
+{
+  "rating": 1523,
+  "confidence": 0.7123468191044491,
+  "strength_class": "Expert",
+  "results": {
+    "trade_statistics": {
+      "total_trades": 190,
+      "winning_trades": 109,
+      "losing_trades": 81,
+      "win_rate": 0.5739557582925715
+    },
+    "trades": []
+  },
+  "timestamp": "2026-01-19T00:20:17.241008"
+}

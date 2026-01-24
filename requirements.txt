@@ -1,0 +1,8 @@
+numpy
+pandas
+tqdm
+pyyaml
+pytest
+zmq
+ib_insync
+MetaTrader5

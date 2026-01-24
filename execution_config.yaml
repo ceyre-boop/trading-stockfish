@@ -1,0 +1,53 @@
+# ExecutionSimulator v1 Configuration
+# Minimal, pessimistic execution model for honest PnL and ELO
+
+symbols:
+  ES:
+    description: "E-mini S&P 500 Futures"
+    tick_size: 0.25              # Minimum price movement
+    fixed_spread: 1.0            # Fixed bid-ask spread in ticks (0.25)
+    spread_volatility_scale: 0.5 # Spread = fixed_spread + (spread_volatility_scale * volatility_state)
+    slippage_coefficient: 0.15   # k in: slippage = k * ATR * (trade_size / liquidity_scale)
+    commission_per_contract: 1.5 # USD per contract
+    liquidity_scale: 1000.0      # Scale factor for partial fills (typical volume/ATR ratio)
+
+  NQ:
+    description: "E-mini NASDAQ-100 Futures"
+    tick_size: 0.25
+    fixed_spread: 2.0            # Wider than ES (more volatile)
+    spread_volatility_scale: 0.7
+    slippage_coefficient: 0.2
+    commission_per_contract: 2.0
+    liquidity_scale: 800.0       # Lower liquidity than ES
+
+  EURUSD:
+    description: "EUR/USD Forex"
+    tick_size: 0.0001            # 1 pip
+    fixed_spread: 1.5            # 1.5 pips
+    spread_volatility_scale: 0.3 # Forex less affected by volatility
+    slippage_coefficient: 0.1    # Forex has tighter slippage
+    commission_per_contract: 0.0 # Covered in bid-ask, typical for retail forex
+    liquidity_scale: 2000.0      # Very liquid market
+
+# Global slippage parameters
+slippage:
+  pessimism_factor: 1.0         # Multiplier for slippage (1.0 = realistic, >1.0 = more pessimistic)
+  min_slippage: 0.0             # Minimum slippage in ticks (prevents zero-cost tiny trades)
+  
+# Partial fill logic
+partial_fills:
+  enabled: true
+  low_liquidity_threshold: 0.3  # If volume/ATR < threshold, trigger partial fills
+  fill_ratio_base: 0.8          # Base fill ratio (80% of target) when liquidity is low
+  
+# Trade size limits
+position_limits:
+  ES:
+    max_single_order: 100        # Maximum contracts per order
+    daily_max: 500               # Maximum daily volume
+  NQ:
+    max_single_order: 80
+    daily_max: 400
+  EURUSD:
+    max_single_order: 1000000    # Micro lots
+    daily_max: 5000000
