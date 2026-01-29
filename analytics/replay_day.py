@@ -24,15 +24,21 @@ Version: 1.0.0
 License: MIT
 """
 
-import logging
 import json
+import logging
+from dataclasses import asdict, dataclass, field
 from datetime import datetime, timedelta
-from pathlib import Path
-from typing import List, Dict, Optional, Tuple, Any
-from dataclasses import dataclass, field, asdict
 from enum import Enum
-import pandas as pd
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
+
 import numpy as np
+import pandas as pd
+
+from engine.amd_features import AMDFeatures
+from engine.trend_structure import compute_trend_structure
+from engine.volatility_features import VolatilityFeatures
+from engine.volatility_utils import compute_atr
 
 logger = logging.getLogger(__name__)
 
@@ -41,8 +47,10 @@ logger = logging.getLogger(__name__)
 # DATA STRUCTURES FOR REPLAY STATE
 # =============================================================================
 
+
 class ReplayStatus(Enum):
     """Replay engine status."""
+
     READY = "READY"
     RUNNING = "RUNNING"
     PAUSED = "PAUSED"
@@ -53,35 +61,36 @@ class ReplayStatus(Enum):
 @dataclass
 class ReplaySnapshot:
     """Complete state snapshot at a single candle."""
+
     candle_index: int
     timestamp: datetime
-    
+
     # OHLCV
     open: float
     high: float
     low: float
     close: float
     volume: int
-    
+
     # Market State (8 causal factors)
     market_state: Dict[str, Any] = field(default_factory=dict)
-    
+
     # Causal Evaluator Output
     eval_score: float = 0.0
     eval_confidence: float = 0.0
     subsystem_scores: Dict[str, float] = field(default_factory=dict)
-    
+
     # Policy Engine Decision
     policy_action: str = "DO_NOTHING"
     target_size: float = 0.0
     action_reasoning: str = ""
-    
+
     # Execution Details
     fill_price: Optional[float] = None
     filled_size: Optional[float] = None
     transaction_cost: float = 0.0
     slippage: float = 0.0
-    
+
     # Position State
     position_side: str = "FLAT"
     position_size: float = 0.0
@@ -89,13 +98,13 @@ class ReplaySnapshot:
     unrealized_pnl: float = 0.0
     realized_pnl: float = 0.0
     max_adverse_excursion: float = 0.0
-    
+
     # Health & Governance
     regime_label: str = "neutral"
     health_status: str = "HEALTHY"
     risk_multiplier: float = 1.0
     governance_kill_switch: bool = False
-    
+
     # Daily Totals
     daily_pnl: float = 0.0
     cumulative_pnl: float = 0.0
@@ -104,26 +113,27 @@ class ReplaySnapshot:
 @dataclass
 class ReplaySession:
     """Complete replay session metadata."""
+
     symbol: str
     start_date: datetime
     end_date: datetime
     config_hash: str
     snapshots: List[ReplaySnapshot] = field(default_factory=list)
     stats: Dict[str, Any] = field(default_factory=dict)
-    
+
     def add_snapshot(self, snapshot: ReplaySnapshot) -> None:
         """Add a snapshot to the session."""
         self.snapshots.append(snapshot)
-    
+
     def compute_stats(self) -> None:
         """Compute session statistics from snapshots."""
         if not self.snapshots:
             self.stats = {"total_candles": 0}
             return
-        
+
         realized_pnls = [s.realized_pnl for s in self.snapshots]
         daily_pnls = [s.daily_pnl for s in self.snapshots]
-        
+
         self.stats = {
             "total_candles": len(self.snapshots),
             "start_price": self.snapshots[0].close,
@@ -132,7 +142,11 @@ class ReplaySession:
             "final_pnl": self.snapshots[-1].cumulative_pnl if self.snapshots else 0.0,
             "total_realized_pnl": sum(realized_pnls),
             "average_daily_pnl": np.mean(daily_pnls) if daily_pnls else 0.0,
-            "max_drawdown": min([s.cumulative_pnl for s in self.snapshots]) if self.snapshots else 0.0,
+            "max_drawdown": (
+                min([s.cumulative_pnl for s in self.snapshots])
+                if self.snapshots
+                else 0.0
+            ),
         }
 
 
@@ -140,17 +154,18 @@ class ReplaySession:
 # REPLAY ENGINE
 # =============================================================================
 
+
 class ReplayEngine:
     """
     Step through historical data candle-by-candle with full state inspection.
-    
+
     Provides:
       - step(): Advance one candle, return snapshot
       - run_full(): Run entire period, collect all snapshots
       - reset(): Reset internal state
       - export_log(): Write detailed log to file
       - export_json(): Write snapshots as JSON
-    
+
     Attributes:
         symbol: Trading symbol (e.g., 'EURUSD')
         data: DataFrame with OHLCV data
@@ -159,17 +174,17 @@ class ReplayEngine:
         current_index: Current candle index
         session: Replay session with all snapshots
     """
-    
+
     def __init__(
         self,
         symbol: str,
         data: pd.DataFrame,
         config: Optional[Dict[str, Any]] = None,
-        verbose: bool = True
+        verbose: bool = True,
     ):
         """
         Initialize ReplayEngine.
-        
+
         Args:
             symbol: Trading symbol
             data: DataFrame with OHLCV data (must have columns: open, high, low, close, volume)
@@ -180,15 +195,15 @@ class ReplayEngine:
         self.data = data.copy()
         self.config = config or {}
         self.verbose = verbose
-        
+
         # Validate data
-        required_cols = {'open', 'high', 'low', 'close', 'volume'}
+        required_cols = {"open", "high", "low", "close", "volume"}
         if not required_cols.issubset(self.data.columns):
             raise ValueError(f"Data must contain columns: {required_cols}")
-        
+
         # Reset index to ensure it's 0-based
         self.data = self.data.reset_index(drop=True)
-        
+
         # State
         self.status = ReplayStatus.READY
         self.current_index = 0
@@ -196,9 +211,9 @@ class ReplayEngine:
             symbol=symbol,
             start_date=datetime.now(),
             end_date=datetime.now(),
-            config_hash=self._compute_config_hash()
+            config_hash=self._compute_config_hash(),
         )
-        
+
         # Position tracking
         self.position_side = "FLAT"
         self.position_size = 0.0
@@ -207,7 +222,11 @@ class ReplayEngine:
         self.realized_pnl = 0.0
         self.daily_pnl = 0.0
         self.peak_cumulative_pnl = 0.0
-        
+
+        # AMD detector (deterministic)
+        self.amd_detector = AMDFeatures(window=50)
+        self.volatility_features = VolatilityFeatures(window=50)
+
         # Health and governance state
         self.health_monitor_state = {
             "health_status": "HEALTHY",
@@ -217,46 +236,46 @@ class ReplayEngine:
             "kill_switch_active": False,
             "reason": "",
         }
-        
+
         # Setup logging
         self._setup_logging()
-        
+
         logger.info(
             f"ReplayEngine initialized: symbol={symbol}, "
             f"data_length={len(self.data)}, config_hash={self.session.config_hash}"
         )
-    
+
     def _setup_logging(self) -> None:
         """Setup file logging for replay."""
-        logs_dir = Path('logs/replay')
+        logs_dir = Path("logs/replay")
         logs_dir.mkdir(parents=True, exist_ok=True)
-        
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        log_file = logs_dir / f'replay_{self.symbol}_{timestamp}.log'
-        
+
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        log_file = logs_dir / f"replay_{self.symbol}_{timestamp}.log"
+
         # Add file handler
         handler = logging.FileHandler(log_file)
         handler.setLevel(logging.INFO)
         formatter = logging.Formatter(
-            '%(asctime)s - %(levelname)s - %(message)s',
-            datefmt='%Y-%m-%d %H:%M:%S'
+            "%(asctime)s - %(levelname)s - %(message)s", datefmt="%Y-%m-%d %H:%M:%S"
         )
         handler.setFormatter(formatter)
         logger.addHandler(handler)
-        
+
         self.log_file = log_file
         logger.info(f"Replay logging to: {log_file}")
-    
+
     def _compute_config_hash(self) -> str:
         """Compute hash of config for session identification."""
         import hashlib
+
         config_str = json.dumps(self.config, sort_keys=True, default=str)
         return hashlib.md5(config_str.encode()).hexdigest()[:8]
-    
+
     def step(self) -> Optional[ReplaySnapshot]:
         """
         Advance one candle and return state snapshot.
-        
+
         Returns:
             ReplaySnapshot for current candle, or None if at end of data
         """
@@ -264,109 +283,109 @@ class ReplayEngine:
             self.status = ReplayStatus.STOPPED
             logger.info("Replay reached end of data")
             return None
-        
+
         if self.status == ReplayStatus.READY:
             self.status = ReplayStatus.RUNNING
-        
+
         # Get current row
         row = self.data.iloc[self.current_index]
-        
+
         # Create snapshot
         snapshot = ReplaySnapshot(
             candle_index=self.current_index,
             timestamp=datetime.now(),  # Would be actual candle time in production
-            open=float(row['open']),
-            high=float(row['high']),
-            low=float(row['low']),
-            close=float(row['close']),
-            volume=int(row['volume']),
+            open=float(row["open"]),
+            high=float(row["high"]),
+            low=float(row["low"]),
+            close=float(row["close"]),
+            volume=int(row["volume"]),
         )
-        
+
         # Add market state (simplified version - in production would call MarketStateBuilder)
         snapshot.market_state = self._build_market_state(self.current_index)
-        
+
         # Add causal evaluator output (simplified version)
         eval_result = self._evaluate_causal(snapshot.market_state, self.current_index)
-        snapshot.eval_score = eval_result['score']
-        snapshot.eval_confidence = eval_result['confidence']
-        snapshot.subsystem_scores = eval_result['subsystem_scores']
-        
+        snapshot.eval_score = eval_result["score"]
+        snapshot.eval_confidence = eval_result["confidence"]
+        snapshot.subsystem_scores = eval_result["subsystem_scores"]
+
         # Add policy decision (simplified version)
         policy_result = self._apply_policy(eval_result, snapshot)
-        snapshot.policy_action = policy_result['action']
-        snapshot.target_size = policy_result['target_size']
-        snapshot.action_reasoning = policy_result['reasoning']
-        
+        snapshot.policy_action = policy_result["action"]
+        snapshot.target_size = policy_result["target_size"]
+        snapshot.action_reasoning = policy_result["reasoning"]
+
         # Apply execution simulator (simplified version)
         execution_result = self._simulate_execution(policy_result, snapshot)
-        snapshot.fill_price = execution_result['fill_price']
-        snapshot.filled_size = execution_result['filled_size']
-        snapshot.transaction_cost = execution_result['transaction_cost']
-        snapshot.slippage = execution_result['slippage']
-        
+        snapshot.fill_price = execution_result["fill_price"]
+        snapshot.filled_size = execution_result["filled_size"]
+        snapshot.transaction_cost = execution_result["transaction_cost"]
+        snapshot.slippage = execution_result["slippage"]
+
         # Update position state
         self._update_position(execution_result, snapshot)
-        
+
         # Add position state to snapshot
         snapshot.position_side = self.position_side
         snapshot.position_size = self.position_size
         snapshot.entry_price = self.entry_price
         snapshot.unrealized_pnl = self._calculate_unrealized_pnl(snapshot)
         snapshot.realized_pnl = self.realized_pnl
-        
+
         # Add health and governance
-        snapshot.regime_label = self.health_monitor_state.get('regime', 'neutral')
-        snapshot.health_status = self.health_monitor_state['health_status']
-        snapshot.risk_multiplier = self.health_monitor_state['risk_multiplier']
-        snapshot.governance_kill_switch = self.governance_state['kill_switch_active']
-        
+        snapshot.regime_label = self.health_monitor_state.get("regime", "neutral")
+        snapshot.health_status = self.health_monitor_state["health_status"]
+        snapshot.risk_multiplier = self.health_monitor_state["risk_multiplier"]
+        snapshot.governance_kill_switch = self.governance_state["kill_switch_active"]
+
         # Add P&L
         snapshot.daily_pnl = self.daily_pnl
         snapshot.cumulative_pnl = self.cumulative_pnl
-        
+
         # Add to session
         self.session.add_snapshot(snapshot)
-        
+
         # Log if verbose
         if self.verbose:
             self._log_snapshot(snapshot)
-        
+
         # Advance
         self.current_index += 1
-        
+
         return snapshot
-    
+
     def run_full(self) -> List[ReplaySnapshot]:
         """
         Run entire replay and return all snapshots.
-        
+
         Returns:
             List of all ReplaySnapshot objects
         """
         logger.info(f"Starting full replay of {len(self.data)} candles")
-        
+
         snapshots = []
         while self.current_index < len(self.data):
             snapshot = self.step()
             if snapshot:
                 snapshots.append(snapshot)
-        
+
         self.status = ReplayStatus.STOPPED
         self.session.compute_stats()
-        
+
         logger.info(
             f"Full replay complete: {len(snapshots)} candles, "
             f"final PnL: {self.cumulative_pnl:.2f}"
         )
-        
+
         return snapshots
-    
+
     def reset(self) -> None:
         """Reset replay state to beginning."""
         self.status = ReplayStatus.READY
         self.current_index = 0
         self.session.snapshots = []
-        
+
         # Reset positions
         self.position_side = "FLAT"
         self.position_size = 0.0
@@ -375,30 +394,60 @@ class ReplayEngine:
         self.realized_pnl = 0.0
         self.daily_pnl = 0.0
         self.peak_cumulative_pnl = 0.0
-        
+
         logger.info("Replay reset to beginning")
-    
+
     # =========================================================================
     # INTERNAL SIMULATION METHODS (Simplified for base implementation)
     # =========================================================================
-    
+
     def _build_market_state(self, idx: int) -> Dict[str, Any]:
         """Build market state for current candle (simplified)."""
         if idx < 20:
+            amd_state = self.amd_detector.compute()
+            vol_state = self.volatility_features._neutral()
             return {
                 "status": "insufficient_data",
-                "factors": {}
+                "factors": {},
+                "amd_state": amd_state,
+                "amd_regime": amd_state.get("amd_tag", "NEUTRAL"),
+                "volatility_state": vol_state,
+                "volatility_shock": vol_state.get("volatility_shock", False),
             }
-        
+
         # Get recent data
-        lookback = self.data.iloc[max(0, idx-50):idx+1]
-        
+        lookback = self.data.iloc[max(0, idx - 50) : idx + 1]
+
+        amd_state = self.amd_detector.compute(
+            price_series=lookback["close"].tolist(),
+            volume_series=lookback["volume"].tolist(),
+            liquidity_state={"liquidity_shock": False},
+        )
+
+        vol_state = self.volatility_features.compute(
+            float(lookback["close"].iloc[-1]),
+            candle_data={
+                "atr": compute_atr(
+                    lookback["close"].tolist(),
+                    window=self.volatility_features.atr_window,
+                )
+            },
+        )
+
+        trend_struct = compute_trend_structure(
+            lookback["close"].tolist(),
+            highs=lookback["high"].tolist(),
+            lows=lookback["low"].tolist(),
+            window=20,
+            volatility_state=vol_state,
+        )
+
         # Calculate technical indicators
-        sma_fast = lookback['close'].rolling(5).mean().iloc[-1]
-        sma_slow = lookback['close'].rolling(20).mean().iloc[-1]
-        rsi = self._calculate_rsi(lookback['close'].values, 14)
-        volatility = lookback['close'].pct_change().std() * np.sqrt(252)
-        
+        sma_fast = lookback["close"].rolling(5).mean().iloc[-1]
+        sma_slow = lookback["close"].rolling(20).mean().iloc[-1]
+        rsi = self._calculate_rsi(lookback["close"].values, 14)
+        volatility = lookback["close"].pct_change().std() * np.sqrt(252)
+
         return {
             "status": "valid",
             "factors": {
@@ -406,61 +455,111 @@ class ReplayEngine:
                 "sma_slow": float(sma_slow) if not pd.isna(sma_slow) else 0.0,
                 "rsi": float(rsi) if not pd.isna(rsi) else 0.0,
                 "volatility": float(volatility) if not pd.isna(volatility) else 0.0,
-                "momentum": float((lookback['close'].iloc[-1] - lookback['close'].iloc[-5]) / lookback['close'].iloc[-5]) if len(lookback) >= 5 else 0.0,
-            }
+                "momentum": (
+                    float(
+                        (lookback["close"].iloc[-1] - lookback["close"].iloc[-5])
+                        / lookback["close"].iloc[-5]
+                    )
+                    if len(lookback) >= 5
+                    else 0.0
+                ),
+            },
+            "amd_state": amd_state,
+            "amd_regime": amd_state.get("amd_tag", "NEUTRAL"),
+            "volatility_state": vol_state,
+            "volatility_shock": vol_state.get("volatility_shock", False),
+            "swing_high": trend_struct["swing_high"],
+            "swing_low": trend_struct["swing_low"],
+            "swing_structure": trend_struct["swing_structure"],
+            "trend_direction": trend_struct["trend_direction"],
+            "trend_strength": trend_struct["trend_strength"],
         }
-    
+
     def _calculate_rsi(self, prices: np.ndarray, period: int = 14) -> float:
         """Calculate RSI indicator."""
         if len(prices) < period + 1:
             return 0.0
-        
-        deltas = np.diff(prices[-period-1:])
+
+        deltas = np.diff(prices[-period - 1 :])
         seed = deltas[:period]
         up = seed[seed >= 0].sum() / period
         down = -seed[seed < 0].sum() / period
-        
+
         rs = up / down if down != 0 else 0
         return 100.0 - (100.0 / (1.0 + rs)) if rs > 0 else 0.0
-    
-    def _evaluate_causal(self, market_state: Dict[str, Any], idx: int) -> Dict[str, Any]:
+
+    def _evaluate_causal(
+        self, market_state: Dict[str, Any], idx: int
+    ) -> Dict[str, Any]:
         """Evaluate market using causal logic (simplified)."""
-        if market_state['status'] != 'valid':
+        if market_state["status"] != "valid":
             return {
-                'score': 0.0,
-                'confidence': 0.0,
-                'subsystem_scores': {}
+                "score": 0.0,
+                "confidence": 0.0,
+                "subsystem_scores": {},
+                "amd_regime": market_state.get("amd_regime", "NEUTRAL"),
             }
-        
-        factors = market_state['factors']
-        
+
+        factors = market_state["factors"]
+        amd_regime = market_state.get("amd_regime", "NEUTRAL")
+        amd_state = market_state.get("amd_state", {}) or {}
+        vol_state = market_state.get("volatility_state", {}) or {}
+
         # Simple evaluation logic
-        trend_score = 0.5 if factors.get('sma_fast', 0) > factors.get('sma_slow', 0) else -0.5
-        rsi_score = (factors.get('rsi', 50) - 50) / 50
-        momentum_score = factors.get('momentum', 0) * 10  # Scale momentum
-        
+        trend_score = (
+            0.5 if factors.get("sma_fast", 0) > factors.get("sma_slow", 0) else -0.5
+        )
+        rsi_score = (factors.get("rsi", 50) - 50) / 50
+        momentum_score = factors.get("momentum", 0) * 10  # Scale momentum
+
         # Combine scores
-        eval_score = (trend_score * 0.5 + rsi_score * 0.3 + momentum_score * 0.2)
+        eval_score = trend_score * 0.5 + rsi_score * 0.3 + momentum_score * 0.2
         eval_score = max(-1.0, min(1.0, eval_score))  # Clamp to [-1, 1]
-        
+
         # Confidence based on convergence
         confidence = 0.5 + abs(eval_score) * 0.5  # Higher confidence for extreme scores
-        
+
+        if amd_regime == "ACCUMULATION":
+            eval_score = min(1.0, eval_score + 0.05)
+        elif amd_regime == "DISTRIBUTION":
+            eval_score = max(-1.0, eval_score - 0.05)
+        elif amd_regime == "MANIPULATION":
+            eval_score = max(-1.0, eval_score - 0.1)
+            confidence *= 0.8
+
+        if vol_state.get("volatility_shock"):
+            eval_score *= 0.7
+            confidence *= 0.8
+
         return {
-            'score': float(eval_score),
-            'confidence': float(confidence),
-            'subsystem_scores': {
-                'trend': float(trend_score),
-                'rsi': float(rsi_score),
-                'momentum': float(momentum_score),
-            }
+            "score": float(eval_score),
+            "confidence": float(confidence),
+            "subsystem_scores": {
+                "trend": float(trend_score),
+                "rsi": float(rsi_score),
+                "momentum": float(momentum_score),
+            },
+            "amd_regime": amd_regime,
+            "amd_confidence": float(amd_state.get("amd_confidence", 0.0)),
+            "volatility_shock": bool(vol_state.get("volatility_shock", False)),
+            "volatility_shock_strength": float(
+                vol_state.get("volatility_shock_strength", 0.0)
+            ),
         }
-    
-    def _apply_policy(self, eval_result: Dict[str, Any], snapshot: ReplaySnapshot) -> Dict[str, Any]:
+
+    def _apply_policy(
+        self, eval_result: Dict[str, Any], snapshot: ReplaySnapshot
+    ) -> Dict[str, Any]:
         """Apply policy engine logic (simplified)."""
-        score = eval_result['score']
-        confidence = eval_result['confidence']
-        
+        score = eval_result["score"]
+        confidence = eval_result["confidence"]
+        amd_regime = eval_result.get(
+            "amd_regime", snapshot.market_state.get("amd_regime", "NEUTRAL")
+        )
+        vol_state = snapshot.market_state.get("volatility_state", {}) or {}
+        vol_shock = bool(vol_state.get("volatility_shock", False))
+        vol_strength = float(vol_state.get("volatility_shock_strength", 0.0))
+
         # Determine action based on score
         if abs(score) < 0.2:
             action = "DO_NOTHING"
@@ -471,31 +570,52 @@ class ReplayEngine:
         else:
             action = "ENTER_FULL" if score > 0 else "EXIT"
             target_size = 1.0 if score > 0 else 0.0
-        
+
+        if amd_regime == "MANIPULATION":
+            action = "DO_NOTHING"
+            target_size = 0.0
+            confidence *= 0.8
+        elif amd_regime == "ACCUMULATION" and action == "EXIT":
+            action = "DO_NOTHING"
+            target_size = 0.0
+        elif amd_regime == "DISTRIBUTION" and action == "ENTER_FULL":
+            action = "ENTER_SMALL"
+            target_size = min(target_size, 0.5)
+
+        if vol_shock:
+            confidence *= 0.85
+            target_size *= max(0.2, 1.0 - 0.8 * vol_strength)
+            if vol_strength > 0.75 and action not in ["EXIT", "DO_NOTHING"]:
+                action = "DO_NOTHING"
+                target_size = 0.0
+
         reasoning = f"Score={score:.3f}, Confidence={confidence:.3f}, Action={action}"
-        
+
         return {
-            'action': action,
-            'target_size': float(target_size),
-            'reasoning': reasoning
+            "action": action,
+            "target_size": float(target_size),
+            "reasoning": reasoning,
+            "volatility_shock": vol_shock,
         }
-    
-    def _simulate_execution(self, policy_result: Dict[str, Any], snapshot: ReplaySnapshot) -> Dict[str, Any]:
+
+    def _simulate_execution(
+        self, policy_result: Dict[str, Any], snapshot: ReplaySnapshot
+    ) -> Dict[str, Any]:
         """Simulate trade execution (simplified)."""
-        action = policy_result['action']
+        action = policy_result["action"]
         mid_price = snapshot.close
-        
+
         # Simple spread model
         spread = mid_price * 0.001  # 0.1% spread
-        
+
         if action == "DO_NOTHING" or action == "HOLD":
             return {
-                'fill_price': None,
-                'filled_size': 0.0,
-                'transaction_cost': 0.0,
-                'slippage': 0.0,
+                "fill_price": None,
+                "filled_size": 0.0,
+                "transaction_cost": 0.0,
+                "slippage": 0.0,
             }
-        
+
         # Fill price with slippage
         if action in ["ENTER_FULL", "ENTER_SMALL"]:
             fill_price = mid_price + spread / 2
@@ -503,25 +623,27 @@ class ReplayEngine:
         else:  # EXIT
             fill_price = mid_price - spread / 2
             slippage = -spread / 2
-        
-        filled_size = policy_result['target_size']
+
+        filled_size = policy_result["target_size"]
         transaction_cost = abs(filled_size * mid_price) * 0.0005  # 0.05% commission
-        
+
         return {
-            'fill_price': float(fill_price),
-            'filled_size': float(filled_size),
-            'transaction_cost': float(transaction_cost),
-            'slippage': float(slippage),
+            "fill_price": float(fill_price),
+            "filled_size": float(filled_size),
+            "transaction_cost": float(transaction_cost),
+            "slippage": float(slippage),
         }
-    
-    def _update_position(self, execution_result: Dict[str, Any], snapshot: ReplaySnapshot) -> None:
+
+    def _update_position(
+        self, execution_result: Dict[str, Any], snapshot: ReplaySnapshot
+    ) -> None:
         """Update position state based on execution."""
-        if execution_result['filled_size'] == 0.0:
+        if execution_result["filled_size"] == 0.0:
             return
-        
-        fill_price = execution_result['fill_price']
-        filled_size = execution_result['filled_size']
-        
+
+        fill_price = execution_result["fill_price"]
+        filled_size = execution_result["filled_size"]
+
         if filled_size > 0 and self.position_side == "FLAT":
             self.position_side = "LONG"
             self.position_size = filled_size
@@ -535,14 +657,14 @@ class ReplayEngine:
             self.position_side = "FLAT"
             self.position_size = 0.0
             self.entry_price = None
-    
+
     def _calculate_unrealized_pnl(self, snapshot: ReplaySnapshot) -> float:
         """Calculate unrealized P&L."""
         if self.position_size == 0 or self.entry_price is None:
             return 0.0
-        
+
         return self.position_size * (snapshot.close - self.entry_price)
-    
+
     def _log_snapshot(self, snapshot: ReplaySnapshot) -> None:
         """Log snapshot details."""
         log_msg = (
@@ -555,16 +677,16 @@ class ReplayEngine:
             f"Health={snapshot.health_status:8s}"
         )
         logger.info(log_msg)
-    
+
     def export_log(self) -> Path:
         """Export detailed human-readable log."""
-        logs_dir = Path('logs/replay')
+        logs_dir = Path("logs/replay")
         logs_dir.mkdir(parents=True, exist_ok=True)
-        
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        log_file = logs_dir / f'replay_detailed_{self.symbol}_{timestamp}.log'
-        
-        with open(log_file, 'w') as f:
+
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        log_file = logs_dir / f"replay_detailed_{self.symbol}_{timestamp}.log"
+
+        with open(log_file, "w") as f:
             f.write(f"{'='*120}\n")
             f.write(f"REPLAY LOG: {self.symbol}\n")
             f.write(f"{'='*120}\n")
@@ -576,13 +698,13 @@ class ReplayEngine:
             f.write(f"\n{'='*120}\n")
             f.write(f"CANDLE-BY-CANDLE DETAILS\n")
             f.write(f"{'='*120}\n\n")
-            
+
             for snapshot in self.session.snapshots:
                 f.write(self._format_snapshot(snapshot))
-        
+
         logger.info(f"Exported detailed log to: {log_file}")
         return log_file
-    
+
     def _format_snapshot(self, snapshot: ReplaySnapshot) -> str:
         """Format snapshot for logging."""
         output = f"""
@@ -625,31 +747,31 @@ Candle {snapshot.candle_index}: {snapshot.timestamp.strftime('%Y-%m-%d %H:%M:%S'
 
 """
         return output
-    
+
     def export_json(self) -> Path:
         """Export snapshots as JSON."""
-        logs_dir = Path('logs/replay')
+        logs_dir = Path("logs/replay")
         logs_dir.mkdir(parents=True, exist_ok=True)
-        
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        json_file = logs_dir / f'replay_snapshots_{self.symbol}_{timestamp}.json'
-        
+
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        json_file = logs_dir / f"replay_snapshots_{self.symbol}_{timestamp}.json"
+
         # Convert snapshots to dictionaries
         snapshots_dict = [asdict(s) for s in self.session.snapshots]
-        
+
         output = {
             "symbol": self.symbol,
             "config_hash": self.session.config_hash,
             "stats": self.session.stats,
-            "snapshots": snapshots_dict
+            "snapshots": snapshots_dict,
         }
-        
-        with open(json_file, 'w') as f:
+
+        with open(json_file, "w") as f:
             json.dump(output, f, indent=2, default=str)
-        
+
         logger.info(f"Exported JSON snapshots to: {json_file}")
         return json_file
-    
+
     def get_stats(self) -> Dict[str, Any]:
         """Get session statistics."""
         self.session.compute_stats()

@@ -1,0 +1,285 @@
+{
+  "experiment_id": "small_sample_run_6",
+  "entry": {
+    "market_state": {
+      "timestamp": 29,
+      "price": 95.55000000000001,
+      "spread": 0.7000000000000028,
+      "volume": 560,
+      "volatility": 1.6691151258108181,
+      "liquidity": 0.14285714285714227,
+      "trend": -0.19999999999999982,
+      "regime": {
+        "volatility": "HIGH",
+        "liquidity": "ROBUST",
+        "trend": "DOWN"
+      },
+      "factors": {
+        "momentum": -3.799999999999983,
+        "mean_reversion": 1.8999999999999915,
+        "orderflow_imbalance": -0.7499999999986607,
+        "volatility_factor": 1.6691151258108181,
+        "liquidity_factor": 0.14285714285714227
+      },
+      "tick": {
+        "price": 95.4,
+        "timestamp": 29,
+        "volume": 560,
+        "buy_volume": 70,
+        "sell_volume": 490
+      },
+      "book": {
+        "bids": [
+          [
+            95.2,
+            2
+          ],
+          [
+            95.0,
+            3
+          ]
+        ],
+        "asks": [
+          [
+            95.9,
+            2
+          ],
+          [
+            96.1,
+            3
+          ]
+        ],
+        "timestamp": 29
+      }
+    },
+    "evaluator_output": {
+      "score": -0.07448300947904746,
+      "confidence": 0.55,
+      "factors": {
+        "momentum": -3.799999999999983,
+        "mean_reversion": 1.8999999999999915,
+        "orderflow_imbalance": -0.7499999999986607,
+        "volatility_factor": 1.6691151258108181,
+        "liquidity_factor": 0.14285714285714227
+      },
+      "normalized_factors": {
+        "momentum": -0.9989995977858408,
+        "mean_reversion": 0.9562374581277383,
+        "orderflow_imbalance": -0.6351489523864884,
+        "volatility_factor": 0.9314345976227665,
+        "liquidity_factor": 0.14189319376693196
+      },
+      "factor_alignment": -0.07448300947904746,
+      "factor_weights": {
+        "momentum": 0.3,
+        "mean_reversion": 0.2,
+        "orderflow_imbalance": 0.2,
+        "volatility_factor": 0.15,
+        "liquidity_factor": 0.15
+      },
+      "regime_modifiers": {
+        "volatility": 0.7,
+        "liquidity": 1.1,
+        "trend": 1.05
+      }
+    },
+    "policy_decision": {
+      "action": "SELL",
+      "size": 0.0088935,
+      "reasoning": {
+        "confidence": 0.54531951316381,
+        "factor_alignment": -0.07448300947904746,
+        "modifiers": {
+          "volatility": 0.7,
+          "liquidity": 1.1,
+          "trend": 1.05
+        },
+        "base_size": 0.02,
+        "final_size": 0.0088935
+      },
+      "regime_context": {
+        "volatility": "HIGH",
+        "liquidity": "ROBUST",
+        "trend": "DOWN"
+      },
+      "factor_alignment": -0.07448300947904746
+    },
+    "governance_decision": {
+      "approved": true,
+      "reason": "NONE"
+    },
+    "execution_result": {
+      "filled": true,
+      "entry_price": 95.55000000000001,
+      "size": -0.0088935
+    },
+    "phase": "entry",
+    "trade_id": 15
+  },
+  "exit": {
+    "market_state": {
+      "timestamp": 30,
+      "price": 95.35,
+      "spread": 0.7000000000000028,
+      "volume": 580,
+      "volatility": 1.7270631784107444,
+      "liquidity": 0.14285714285714227,
+      "trend": -0.2,
+      "regime": {
+        "volatility": "HIGH",
+        "liquidity": "ROBUST",
+        "trend": "DOWN"
+      },
+      "factors": {
+        "momentum": -3.8000000000000114,
+        "mean_reversion": 1.9000000000000057,
+        "orderflow_imbalance": -0.7586206896538644,
+        "volatility_factor": 1.7270631784107444,
+        "liquidity_factor": 0.14285714285714227
+      },
+      "tick": {
+        "price": 95.2,
+        "timestamp": 30,
+        "volume": 580,
+        "buy_volume": 70,
+        "sell_volume": 510
+      },
+      "book": {
+        "bids": [
+          [
+            95.0,
+            2
+          ],
+          [
+            94.8,
+            3
+          ]
+        ],
+        "asks": [
+          [
+            95.7,
+            2
+          ],
+          [
+            95.9,
+            3
+          ]
+        ],
+        "timestamp": 30
+      }
+    },
+    "evaluator_output": {
+      "score": -0.07441498097932656,
+      "confidence": 0.55,
+      "factors": {
+        "momentum": -3.8000000000000114,
+        "mean_reversion": 1.9000000000000057,
+        "orderflow_imbalance": -0.7586206896538644,
+        "volatility_factor": 1.7270631784107444,
+        "liquidity_factor": 0.14285714285714227
+      },
+      "normalized_factors": {
+        "momentum": -0.9989995977858409,
+        "mean_reversion": 0.9562374581277395,
+        "orderflow_imbalance": -0.6402638008337647,
+        "volatility_factor": 0.9387079188839397,
+        "liquidity_factor": 0.14189319376693196
+      },
+      "factor_alignment": -0.07441498097932656,
+      "factor_weights": {
+        "momentum": 0.3,
+        "mean_reversion": 0.2,
+        "orderflow_imbalance": 0.2,
+        "volatility_factor": 0.15,
+        "liquidity_factor": 0.15
+      },
+      "regime_modifiers": {
+        "volatility": 0.7,
+        "liquidity": 1.1,
+        "trend": 1.05
+      }
+    },
+    "policy_decision": {
+      "action": "SELL",
+      "size": 0.0088935,
+      "reasoning": {
+        "confidence": 0.5452645121217854,
+        "factor_alignment": -0.07441498097932656,
+        "modifiers": {
+          "volatility": 0.7,
+          "liquidity": 1.1,
+          "trend": 1.05
+        },
+        "base_size": 0.02,
+        "final_size": 0.0088935
+      },
+      "regime_context": {
+        "volatility": "HIGH",
+        "liquidity": "ROBUST",
+        "trend": "DOWN"
+      },
+      "factor_alignment": -0.07441498097932656
+    },
+    "governance_decision": {
+      "approved": true,
+      "reason": "NONE"
+    },
+    "execution_result": {
+      "entry_price": 95.55000000000001,
+      "exit_price": 95.35,
+      "filled": true,
+      "size": -0.0088935,
+      "slippage": 0.15000000000000568,
+      "transaction_cost": 0.002223375,
+      "pnl": -0.0004446749999998483,
+      "mae": 0.0017787000000001518,
+      "mfe": 0.0017787000000001518,
+      "holding_period": 1
+    },
+    "phase": "exit",
+    "trade_id": 15
+  },
+  "during": [],
+  "trade_opened": true,
+  "trade_closed": true,
+  "pnl": -0.0004446749999998483,
+  "max_adverse_excursion": null,
+  "max_favorable_excursion": null,
+  "regime_evolution": [],
+  "reason_for_entry": null,
+  "reason_for_exit": null,
+  "governance_at_entry": {
+    "approved": true,
+    "reason": "NONE"
+  },
+  "governance_at_exit": {
+    "approved": true,
+    "reason": "NONE"
+  },
+  "regime_distribution": {
+    "{\"liquidity\": \"ROBUST\", \"trend\": \"SIDEWAYS\", \"volatility\": \"LOW\"}": 1,
+    "{\"liquidity\": \"ROBUST\", \"trend\": \"DOWN\", \"volatility\": \"LOW\"}": 1,
+    "{\"liquidity\": \"ROBUST\", \"trend\": \"DOWN\", \"volatility\": \"NORMAL\"}": 2,
+    "{\"liquidity\": \"ROBUST\", \"trend\": \"DOWN\", \"volatility\": \"HIGH\"}": 26
+  },
+  "factor_contributions": {
+    "momentum": -2.4383333333333335,
+    "mean_reversion": 1.2556426561269836,
+    "orderflow_imbalance": -0.5282938707511443,
+    "volatility_factor": 0.8705828371727012,
+    "liquidity_factor": 0.1217810848763229
+  },
+  "confidence_stats": {
+    "min": 0.55,
+    "max": 0.9059911582342731,
+    "mean": 0.5956182793510005,
+    "count": 30
+  },
+  "size_stats": {
+    "min": 0.0088935,
+    "max": 0.025114074906254055,
+    "mean": 0.010531765664634866,
+    "count": 30
+  },
+  "markdown": "# Experiment Report: small_sample_run_6\n\n## Trade Opened: True\n## Trade Closed: True\n## PnL: -0.0004446749999998483\n\n### Entry Reason:\nNone\n\n### Exit Reason:\nNone\n\n### Regime Evolution:\n[]\n\n### Regime Distribution:\n{'{\"liquidity\": \"ROBUST\", \"trend\": \"SIDEWAYS\", \"volatility\": \"LOW\"}': 1, '{\"liquidity\": \"ROBUST\", \"trend\": \"DOWN\", \"volatility\": \"LOW\"}': 1, '{\"liquidity\": \"ROBUST\", \"trend\": \"DOWN\", \"volatility\": \"NORMAL\"}': 2, '{\"liquidity\": \"ROBUST\", \"trend\": \"DOWN\", \"volatility\": \"HIGH\"}': 26}\n\n### Factor Contributions (avg):\n{'momentum': -2.4383333333333335, 'mean_reversion': 1.2556426561269836, 'orderflow_imbalance': -0.5282938707511443, 'volatility_factor': 0.8705828371727012, 'liquidity_factor': 0.1217810848763229}\n\n### Confidence Stats:\n{'min': 0.55, 'max': 0.9059911582342731, 'mean': 0.5956182793510005, 'count': 30}\n\n### Size Stats:\n{'min': 0.0088935, 'max': 0.025114074906254055, 'mean': 0.010531765664634866, 'count': 30}\n\n### Governance at Entry:\n{'approved': True, 'reason': 'NONE'}\n\n### Governance at Exit:\n{'approved': True, 'reason': 'NONE'}\n\n"
+}

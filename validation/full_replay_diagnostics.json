@@ -1,0 +1,342 @@
+[
+  {
+    "market_state": {
+      "market": "mock",
+      "event": {
+        "price": 100.0,
+        "timestamp": 1
+      }
+    },
+    "evaluator_output": {
+      "score": 1.0,
+      "confidence": 0,
+      "factors": {}
+    },
+    "policy_decision": {
+      "action": "buy",
+      "size": 0
+    },
+    "governance_decision": {
+      "approved": true,
+      "reason": "NONE"
+    },
+    "execution_result": {
+      "executed": [
+        {
+          "action": "buy",
+          "size": 0
+        },
+        {
+          "action": "sell"
+        }
+      ],
+      "filled": false
+    }
+  },
+  {
+    "market_state": {
+      "market": "mock",
+      "event": {
+        "price": 100.5,
+        "timestamp": 2
+      }
+    },
+    "evaluator_output": {
+      "score": 1.0,
+      "confidence": 0,
+      "factors": {}
+    },
+    "policy_decision": {
+      "action": "buy",
+      "size": 0
+    },
+    "governance_decision": {
+      "approved": true,
+      "reason": "NONE"
+    },
+    "execution_result": {
+      "executed": [
+        {
+          "action": "buy",
+          "size": 0
+        },
+        {
+          "action": "sell"
+        }
+      ],
+      "filled": false
+    }
+  },
+  {
+    "market_state": {
+      "market": "mock",
+      "event": {
+        "price": 101.0,
+        "timestamp": 3
+      }
+    },
+    "evaluator_output": {
+      "score": 1.0,
+      "confidence": 0,
+      "factors": {}
+    },
+    "policy_decision": {
+      "action": "buy",
+      "size": 0
+    },
+    "governance_decision": {
+      "approved": true,
+      "reason": "NONE"
+    },
+    "execution_result": {
+      "executed": [
+        {
+          "action": "buy",
+          "size": 0
+        },
+        {
+          "action": "sell"
+        }
+      ],
+      "filled": false
+    }
+  },
+  {
+    "market_state": {
+      "market": "mock",
+      "event": {
+        "price": 100.7,
+        "timestamp": 4
+      }
+    },
+    "evaluator_output": {
+      "score": 1.0,
+      "confidence": 0,
+      "factors": {}
+    },
+    "policy_decision": {
+      "action": "buy",
+      "size": 0
+    },
+    "governance_decision": {
+      "approved": true,
+      "reason": "NONE"
+    },
+    "execution_result": {
+      "executed": [
+        {
+          "action": "buy",
+          "size": 0
+        },
+        {
+          "action": "sell"
+        }
+      ],
+      "filled": false
+    }
+  },
+  {
+    "market_state": {
+      "market": "mock",
+      "event": {
+        "price": 100.2,
+        "timestamp": 5
+      }
+    },
+    "evaluator_output": {
+      "score": 1.0,
+      "confidence": 0,
+      "factors": {}
+    },
+    "policy_decision": {
+      "action": "buy",
+      "size": 0
+    },
+    "governance_decision": {
+      "approved": true,
+      "reason": "NONE"
+    },
+    "execution_result": {
+      "executed": [
+        {
+          "action": "buy",
+          "size": 0
+        },
+        {
+          "action": "sell"
+        }
+      ],
+      "filled": false
+    }
+  },
+  {
+    "market_state": {
+      "market": "mock",
+      "event": {
+        "price": 99.8,
+        "timestamp": 6
+      }
+    },
+    "evaluator_output": {
+      "score": 1.0,
+      "confidence": 0,
+      "factors": {}
+    },
+    "policy_decision": {
+      "action": "buy",
+      "size": 0
+    },
+    "governance_decision": {
+      "approved": true,
+      "reason": "NONE"
+    },
+    "execution_result": {
+      "executed": [
+        {
+          "action": "buy",
+          "size": 0
+        },
+        {
+          "action": "sell"
+        }
+      ],
+      "filled": false
+    }
+  },
+  {
+    "market_state": {
+      "market": "mock",
+      "event": {
+        "price": 100.3,
+        "timestamp": 7
+      }
+    },
+    "evaluator_output": {
+      "score": 1.0,
+      "confidence": 0,
+      "factors": {}
+    },
+    "policy_decision": {
+      "action": "buy",
+      "size": 0
+    },
+    "governance_decision": {
+      "approved": true,
+      "reason": "NONE"
+    },
+    "execution_result": {
+      "executed": [
+        {
+          "action": "buy",
+          "size": 0
+        },
+        {
+          "action": "sell"
+        }
+      ],
+      "filled": false
+    }
+  },
+  {
+    "market_state": {
+      "market": "mock",
+      "event": {
+        "price": 100.9,
+        "timestamp": 8
+      }
+    },
+    "evaluator_output": {
+      "score": 1.0,
+      "confidence": 0,
+      "factors": {}
+    },
+    "policy_decision": {
+      "action": "buy",
+      "size": 0
+    },
+    "governance_decision": {
+      "approved": true,
+      "reason": "NONE"
+    },
+    "execution_result": {
+      "executed": [
+        {
+          "action": "buy",
+          "size": 0
+        },
+        {
+          "action": "sell"
+        }
+      ],
+      "filled": false
+    }
+  },
+  {
+    "market_state": {
+      "market": "mock",
+      "event": {
+        "price": 101.2,
+        "timestamp": 9
+      }
+    },
+    "evaluator_output": {
+      "score": 1.0,
+      "confidence": 0,
+      "factors": {}
+    },
+    "policy_decision": {
+      "action": "buy",
+      "size": 0
+    },
+    "governance_decision": {
+      "approved": true,
+      "reason": "NONE"
+    },
+    "execution_result": {
+      "executed": [
+        {
+          "action": "buy",
+          "size": 0
+        },
+        {
+          "action": "sell"
+        }
+      ],
+      "filled": false
+    }
+  },
+  {
+    "market_state": {
+      "market": "mock",
+      "event": {
+        "price": 101.0,
+        "timestamp": 10
+      }
+    },
+    "evaluator_output": {
+      "score": 1.0,
+      "confidence": 0,
+      "factors": {}
+    },
+    "policy_decision": {
+      "action": "buy",
+      "size": 0
+    },
+    "governance_decision": {
+      "approved": true,
+      "reason": "NONE"
+    },
+    "execution_result": {
+      "executed": [
+        {
+          "action": "buy",
+          "size": 0
+        },
+        {
+          "action": "sell"
+        }
+      ],
+      "filled": false
+    }
+  }
+]

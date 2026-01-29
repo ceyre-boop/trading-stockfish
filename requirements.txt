@@ -6,3 +6,4 @@ pytest
 zmq
 ib_insync
 MetaTrader5
+requests

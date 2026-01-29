@@ -1,0 +1,4 @@
+[
+  {"timestamp": 1, "type": "tick", "price": 100, "volume": 1000},
+  {"timestamp": 2, "type": "tick", "price": 101, "volume": 1100}
+]

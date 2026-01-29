@@ -13,7 +13,19 @@ CLI-based real-time monitoring dashboard for live trading with:
   - Keyboard controls (pause/resume/flatten/shutdown)
 """
 
-import curses
+import sys
+
+if sys.platform.startswith("win"):
+    # Windows-safe mock for curses-based dashboard
+    class MockDashboard:
+        def start(self, *args, **kwargs): pass
+        def update(self, *args, **kwargs): pass
+        def stop(self, *args, **kwargs): pass
+
+    Dashboard = MockDashboard
+
+else:
+    import curses
 import threading
 import time
 import logging
@@ -479,3 +491,4 @@ class MonitoringDashboard:
     def is_running(self) -> bool:
         """Check if dashboard is running."""
         return self._is_running
+

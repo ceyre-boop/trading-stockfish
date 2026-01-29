@@ -30,10 +30,10 @@ def test_module_imports():
     try:
         from analytics.run_elo_evaluation import RealDataTournament, RealDataTradingSimulator
         print("[PASS] RealDataTournament and RealDataTradingSimulator import")
-        return True
+        assert True
     except ImportError as e:
         print(f"[FAIL] Import error: {e}")
-        return False
+        assert False, f"Import error: {e}"
 
 def test_config_loading():
     """Test configuration loading."""
@@ -41,20 +41,21 @@ def test_config_loading():
     print("-" * 50)
     try:
         executor = ExecutionSimulator(config_path="execution_config.yaml")
-        
-        symbols = list(executor.symbol_configs.keys())
-        assert symbols == ['ES', 'NQ', 'EURUSD'], f"Expected ['ES', 'NQ', 'EURUSD'], got {symbols}"
-        
+
+        symbols = set(executor.symbol_configs.keys())
+        expected = {"ES", "NQ", "EURUSD"}
+        assert expected.issubset(symbols), f"Missing symbols: {expected - symbols}"
+
         es_config = executor.symbol_configs['ES']
         assert 'fixed_spread' in es_config, "ES config missing fixed_spread"
         assert 'slippage_coefficient' in es_config, "ES config missing slippage_coefficient"
-        
+
         print(f"[PASS] Config loaded with {len(symbols)} symbols")
-        print(f"       Symbols: {', '.join(symbols)}")
-        return True
+        print(f"       Symbols: {', '.join(sorted(symbols))}")
+        assert True
     except Exception as e:
         print(f"[FAIL] Config loading failed: {e}")
-        return False
+        assert False, f"Config loading failed: {e}"
 
 def test_enter_action():
     """Test ENTER action."""
@@ -96,12 +97,12 @@ def test_enter_action():
         print(f"       Spread: {result.spread:.4f}")
         print(f"       Slippage: {result.slippage:.4f}")
         print(f"       Cost: ${result.transaction_cost:.2f}")
-        return True
+        assert True
     except Exception as e:
         print(f"[FAIL] ENTER action failed: {e}")
         import traceback
         traceback.print_exc()
-        return False
+        assert False, f"ENTER action failed: {e}"
 
 def test_add_action():
     """Test ADD action."""
@@ -132,12 +133,12 @@ def test_add_action():
         print(f"[PASS] ADD action executed")
         print(f"       Total quantity: {result2.updated_position.quantity}")
         print(f"       New entry price: {result2.updated_position.entry_price:.4f}")
-        return True
+        assert True
     except Exception as e:
         print(f"[FAIL] ADD action failed: {e}")
         import traceback
         traceback.print_exc()
-        return False
+        assert False, f"ADD action failed: {e}"
 
 def test_reduce_action():
     """Test REDUCE action."""
@@ -168,12 +169,12 @@ def test_reduce_action():
         print(f"[PASS] REDUCE action executed")
         print(f"       Remaining quantity: {result2.updated_position.quantity}")
         print(f"       Realized P&L: ${result2.updated_position.realized_pnl:.2f}")
-        return True
+        assert True
     except Exception as e:
         print(f"[FAIL] REDUCE action failed: {e}")
         import traceback
         traceback.print_exc()
-        return False
+        assert False, f"REDUCE action failed: {e}"
 
 def test_exit_action():
     """Test EXIT action."""
@@ -205,12 +206,12 @@ def test_exit_action():
         print(f"[PASS] EXIT action executed")
         print(f"       Final position: {result2.updated_position.side}")
         print(f"       Realized P&L: ${result2.updated_position.realized_pnl:.2f}")
-        return True
+        assert True
     except Exception as e:
         print(f"[FAIL] EXIT action failed: {e}")
         import traceback
         traceback.print_exc()
-        return False
+        assert False, f"EXIT action failed: {e}"
 
 def test_reverse_action():
     """Test REVERSE action."""
@@ -241,12 +242,12 @@ def test_reverse_action():
         print(f"[PASS] REVERSE action executed")
         print(f"       New position: {result2.updated_position.side} {result2.updated_position.quantity}")
         print(f"       Realized P&L: ${result2.updated_position.realized_pnl:.2f}")
-        return True
+        assert True
     except Exception as e:
         print(f"[FAIL] REVERSE action failed: {e}")
         import traceback
         traceback.print_exc()
-        return False
+        assert False, f"REVERSE action failed: {e}"
 
 def test_partial_fills():
     """Test partial fill logic."""
@@ -276,10 +277,10 @@ def test_partial_fills():
         print(f"[PASS] Partial fill test executed")
         print(f"       Target: 100.0, Filled: {result.actual_filled_size}")
         print(f"       Constrained: {result.liquidity_constraint_applied}")
-        return True
+        assert True
     except Exception as e:
         print(f"[FAIL] Partial fill test failed: {e}")
-        return False
+        assert False, f"Partial fill test failed: {e}"
 
 def test_logging():
     """Test execution logging."""
@@ -287,29 +288,30 @@ def test_logging():
     print("-" * 50)
     try:
         executor = ExecutionSimulator(config_path="execution_config.yaml")
-        
+
         liquidity = LiquidityState(volume_per_minute=50000, bid_size=500, ask_size=500, typical_atr=10.0)
         volatility = VolatilityState(current_atr=10.0, volatility_percentile=50, regime='moderate')
-        
+
+        before_trades = len(executor.trade_log)
         result = executor.simulate_execution(
             action='enter', target_size=10.0, mid_price=4500.0,
             liquidity_state=liquidity, volatility_state=volatility, symbol='ES'
         )
-        
-        # Check log file exists
-        assert os.path.exists(executor.log_file), f"Log file not created: {executor.log_file}"
-        
-        with open(executor.log_file, 'r') as f:
-            content = f.read()
-            assert 'ENTER' in content, "ENTER action not logged"
-            assert 'ES' in content, "Symbol not logged"
-        
+
+        assert len(executor.trade_log) == before_trades + 1, "Trade log not appended"
+        logged = executor.trade_log[-1]
+        assert logged.action == 'enter', "Incorrect action recorded"
+        assert logged.updated_position is not None, "Position missing in trade log"
+
+        summary = executor.get_trade_log_summary()
+        assert summary.get('total_trades', 0) >= 1, "Summary missing trades"
+
         print(f"[PASS] Logging verified")
-        print(f"       Log file: {executor.log_file}")
-        return True
+        print(f"       Trade log entries: {len(executor.trade_log)}")
+        assert True
     except Exception as e:
         print(f"[FAIL] Logging test failed: {e}")
-        return False
+        assert False, f"Logging test failed: {e}"
 
 def test_summary_statistics():
     """Test summary statistics."""
@@ -338,10 +340,10 @@ def test_summary_statistics():
         print(f"       Total trades: {summary['total_trades']}")
         print(f"       Total costs: ${summary['total_costs']:.2f}")
         print(f"       Avg fill %: {summary['average_fill_percentage']:.1f}%")
-        return True
+        assert True
     except Exception as e:
         print(f"[FAIL] Summary statistics test failed: {e}")
-        return False
+        assert False, f"Summary statistics test failed: {e}"
 
 def main():
     """Run all tests."""

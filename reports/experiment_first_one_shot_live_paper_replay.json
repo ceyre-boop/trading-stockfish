@@ -1,0 +1,17 @@
+{
+  "experiment_id": "first_one_shot_live_paper_replay",
+  "entry": null,
+  "exit": null,
+  "during": [],
+  "trade_opened": false,
+  "trade_closed": false,
+  "pnl": null,
+  "max_adverse_excursion": null,
+  "max_favorable_excursion": null,
+  "regime_evolution": [],
+  "reason_for_entry": null,
+  "reason_for_exit": null,
+  "governance_at_entry": null,
+  "governance_at_exit": null,
+  "markdown": "# Experiment Report: first_one_shot_live_paper_replay\n\n## Trade Opened: False\n## Trade Closed: False\n## PnL: None\n\n### Entry Reason:\nNone\n\n### Exit Reason:\nNone\n\n### Regime Evolution:\n[]\n\n### Governance at Entry:\nNone\n\n### Governance at Exit:\nNone\n\n"
+}

@@ -1,0 +1,20 @@
+{
+  "runs": 10,
+  "total_trades": 10,
+  "wins": 5,
+  "losses": 5,
+  "average_pnl": 0.0020641266338311233,
+  "average_confidence": 0.6009027540951949,
+  "regime_distribution": {
+    "{\"liquidity\": \"ROBUST\", \"trend\": \"UP\", \"volatility\": \"HIGH\"}": 5,
+    "{\"liquidity\": \"ROBUST\", \"trend\": \"DOWN\", \"volatility\": \"HIGH\"}": 5
+  },
+  "factor_contributions": {
+    "momentum": 10,
+    "mean_reversion": 10,
+    "orderflow_imbalance": 10,
+    "volatility_factor": 10,
+    "liquidity_factor": 10
+  },
+  "governance_veto_frequency": 0
+}

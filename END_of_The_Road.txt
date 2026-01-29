@@ -1,0 +1,124 @@
+# TRADING STOCKFISH — MASTER TODO ROADMAP
+A high-level, human-readable roadmap outlining the major milestones required
+to reach Stockfish-level capability in the Trading Stockfish engine.
+
+This file is for reference only. It is NOT a prompt for AI assistants.
+
+============================================================
+1. Canonical MarketState (80% Complete)
+============================================================
+- Finalize volatility fields
+- Finalize macro/news fields
+- Ensure all sub-states have neutral defaults
+- Validate timestamp causality
+- Freeze schema in state/schema.py
+
+============================================================
+2. Deterministic State Builder (70% Complete)
+============================================================
+- Add volatility feature block
+- Add macro/news feature block
+- Integrate regime engine output
+- Ensure parity between live and historical pipelines
+- Expand raw state capture for debugging
+
+============================================================
+3. Regime Engine (In Progress)
+============================================================
+- Volatility regime classification
+- Liquidity regime classification
+- Macro regime classification
+- Hysteresis and transition logic
+- Regime confidence scoring
+- History hashing for auditability
+
+============================================================
+4. Factorized Evaluator (Next Major Component)
+============================================================
+- Implement deterministic factor functions
+- Add regime-conditioned factor weights
+- Compute final score and confidence
+- Produce JSON-serializable evaluation output
+- Add factor breakdown for explainability
+
+============================================================
+5. Policy Engine (After Evaluator)
+============================================================
+- Map evaluation output to discrete actions
+- Add regime-conditioned thresholds
+- Add risk-aware sizing logic
+- Implement action pruning
+- Integrate governance veto hooks
+
+============================================================
+6. Execution Simulator (Needs Upgrade)
+============================================================
+- Deterministic fill model
+- Liquidity-aware slippage
+- Partial fills
+- Transaction cost modeling
+- Shock and stress behavior
+- Execution trace logging
+
+============================================================
+7. Governance & Risk Engine (Incomplete)
+============================================================
+- Exposure limits
+- Drawdown limits
+- Stale data detection
+- Kill switch logic
+- Meta-rules and veto system
+- Regime-aware governance adjustments
+
+============================================================
+8. Scenario Library (Not Started)
+============================================================
+- Flash crash scenarios
+- Trend day scenarios
+- Chop day scenarios
+- Low-liquidity sessions
+- Macro event days
+- Standardized scenario format
+
+============================================================
+9. Trading ELO Engine (Not Started)
+============================================================
+- Version vs version tournaments
+- Regime-segmented scoring
+- Execution quality metrics
+- Factor attribution reports
+- ELO update system
+- Leaderboards and version tracking
+
+============================================================
+10. Replay Engine & Research Cockpit (Partial)
+============================================================
+- Timeline replay with overlays
+- Factor visualization
+- Regime visualization
+- Execution trace visualization
+- Scenario export tools
+- Interactive debugging interface
+
+============================================================
+11. Unified Run Modes (Almost Done)
+============================================================
+- Backtest mode
+- Replay mode
+- Paper trading mode
+- Live trading mode
+- Shared pipeline across all modes
+
+============================================================
+12. Release Engineering (Final Stage)
+============================================================
+- Versioned configs
+- Versioned factor weights
+- Versioned playbooks
+- Deterministic builds
+- Reproducible runs
+- Release notes and changelogs
+
+============================================================
+END OF ROADMAP
+============================================================

@@ -1,0 +1,35 @@
+{
+  "instrument": "ES",
+  "date": "2026-01-26",
+  "volatility_regime": "NORMAL",
+  "liquidity_regime": "NORMAL",
+  "macro_regime": "RISK_ON",
+  "event_tags": ["NONE"],
+  "ticks": [
+    {"price": 100.0, "timestamp": 1},
+    {"price": 100.5, "timestamp": 2},
+    {"price": 101.0, "timestamp": 3},
+    {"price": 100.7, "timestamp": 4},
+    {"price": 100.2, "timestamp": 5},
+    {"price": 99.8, "timestamp": 6},
+    {"price": 100.3, "timestamp": 7},
+    {"price": 100.9, "timestamp": 8},
+    {"price": 101.2, "timestamp": 9},
+    {"price": 101.0, "timestamp": 10}
+  ],
+  "order_books": [
+    {"bids": [[99.9, 10], [99.8, 20]], "asks": [[100.1, 10], [100.2, 20]], "timestamp": 1},
+    {"bids": [[100.4, 10], [100.3, 20]], "asks": [[100.6, 10], [100.7, 20]], "timestamp": 2},
+    {"bids": [[100.9, 10], [100.8, 20]], "asks": [[101.1, 10], [101.2, 20]], "timestamp": 3},
+    {"bids": [[100.6, 10], [100.5, 20]], "asks": [[100.8, 10], [100.9, 20]], "timestamp": 4},
+    {"bids": [[100.1, 10], [100.0, 20]], "asks": [[100.3, 10], [100.4, 20]], "timestamp": 5},
+    {"bids": [[99.7, 10], [99.6, 20]], "asks": [[99.9, 10], [100.0, 20]], "timestamp": 6},
+    {"bids": [[100.2, 10], [100.1, 20]], "asks": [[100.4, 10], [100.5, 20]], "timestamp": 7},
+    {"bids": [[100.8, 10], [100.7, 20]], "asks": [[101.0, 10], [101.1, 20]], "timestamp": 8},
+    {"bids": [[101.1, 10], [101.0, 20]], "asks": [[101.3, 10], [101.4, 20]], "timestamp": 9},
+    {"bids": [[100.9, 10], [100.8, 20]], "asks": [[101.1, 10], [101.2, 20]], "timestamp": 10}
+  ],
+  "news_events": [
+    {"headline": "No major news", "timestamp": 1}
+  ]
+}

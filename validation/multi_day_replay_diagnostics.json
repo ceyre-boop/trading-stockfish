@@ -1,0 +1,112 @@
+[
+  {
+    "timestamp": 1,
+    "portfolio_value": 1000000,
+    "actions": [
+      {
+        "action": "buy"
+      },
+      {
+        "action": "sell"
+      }
+    ],
+    "execution": {
+      "executed": [
+        {
+          "action": "buy"
+        },
+        {
+          "action": "sell"
+        }
+      ]
+    }
+  },
+  {
+    "timestamp": 2,
+    "portfolio_value": 1000000,
+    "actions": [
+      {
+        "action": "buy"
+      },
+      {
+        "action": "sell"
+      }
+    ],
+    "execution": {
+      "executed": [
+        {
+          "action": "buy"
+        },
+        {
+          "action": "sell"
+        }
+      ]
+    }
+  },
+  {
+    "timestamp": 3,
+    "portfolio_value": 1000000,
+    "actions": [
+      {
+        "action": "buy"
+      },
+      {
+        "action": "sell"
+      }
+    ],
+    "execution": {
+      "executed": [
+        {
+          "action": "buy"
+        },
+        {
+          "action": "sell"
+        }
+      ]
+    }
+  },
+  {
+    "timestamp": 4,
+    "portfolio_value": 1000000,
+    "actions": [
+      {
+        "action": "buy"
+      },
+      {
+        "action": "sell"
+      }
+    ],
+    "execution": {
+      "executed": [
+        {
+          "action": "buy"
+        },
+        {
+          "action": "sell"
+        }
+      ]
+    }
+  },
+  {
+    "timestamp": 5,
+    "portfolio_value": 1000000,
+    "actions": [
+      {
+        "action": "buy"
+      },
+      {
+        "action": "sell"
+      }
+    ],
+    "execution": {
+      "executed": [
+        {
+          "action": "buy"
+        },
+        {
+          "action": "sell"
+        }
+      ]
+    }
+  }
+]
