@@ -472,9 +472,7 @@ def build_state(
         Complete state dictionary. None if critical data fetch failed.
     """
 
-    logger.info(
-        f"Building state for {symbol} (demo={use_demo}, microstructure={enable_microstructure})"
-    )
+    logger.info(f"Building state for {symbol} (demo={use_demo})")
 
     # Fetch tick data
     tick_data = fetch_tick_data(symbol, use_demo=use_demo)
@@ -669,13 +667,6 @@ def validate_state(state: Optional[Dict]) -> Tuple[bool, List[str]]:
 def _mock_tick_data(symbol: str) -> Dict:
     raise RuntimeError("Mock tick data is disabled; real market data required")
 
-
-def _mock_candle_data(symbol: str, timeframe: str) -> Dict:
-    raise RuntimeError("Mock candle data is disabled; real market data required")
-
-
-if __name__ == "__main__":
-    raise RuntimeError(
         "Direct execution with demo/mock data is disabled; use real feeds"
     )
 

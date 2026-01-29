@@ -3,6 +3,35 @@ from typing import Any, Dict, List, Optional
 
 
 @dataclass
+class FutureEvent:
+    origin_id: str = ""
+    event_name: str = ""
+    timestamp: str = ""
+    time_delta_minutes: float = 0.0
+    impact_level: str = "MEDIUM"
+    event_type: str = "OTHER"
+    asset_scope: List[str] = field(default_factory=list)
+    risk_window: bool = False
+    macro_pressure_score: float = 0.0
+
+
+@dataclass
+class ParsedEvent:
+    source: str = "forex"
+    origin_id: str = ""
+    timestamp: str = ""
+    asset_scope: List[str] = field(default_factory=list)
+    event_type: str = "OTHER"
+    impact_level: str = "MEDIUM"
+    directional_bias: str = "NEUTRAL"
+    confidence: float = 0.0
+    sentiment_score: float = 0.0
+    sentiment_volatility: float = 0.0
+    summary: str = ""
+    keywords: List[str] = field(default_factory=list)
+
+
+@dataclass
 class MarketState:
     """Snapshot of the market used by the evaluator and policy engine."""
 
@@ -27,8 +56,71 @@ class MarketState:
     roc_5: float = 0.0
     roc_10: float = 0.0
     roc_20: float = 0.0
+    rsi_value: float = 0.0
+    rsi_state: str = "NEUTRAL"
+    macd_value: float = 0.0
+    macd_signal: float = 0.0
+    macd_histogram: float = 0.0
+    macd_state: str = "NEUTRAL"
+    stoch_k: float = 0.0
+    stoch_d: float = 0.0
+    stoch_state: str = "NEUTRAL"
+    momentum_regime: str = "CHOP"
+    momentum_confidence: float = 0.0
+    rsi_bullish_divergence: bool = False
+    rsi_bearish_divergence: bool = False
+    macd_bullish_divergence: bool = False
+    macd_bearish_divergence: bool = False
+    next_event_type: str = "NONE"
+    next_event_time_delta: float = 0.0
+    next_event_impact: str = "NONE"
+    event_risk_window: str = "NONE"
+    expected_volatility_state: str = "LOW"
+    expected_volatility_score: float = 0.0
+    macro_pressure_score: float = 0.0
+    macro_entry_allowed: bool = True
+    macro_position_size_multiplier: float = 1.0
+    macro_max_leverage_multiplier: float = 1.0
+    macro_adjusted_priors: Dict[str, float] = field(default_factory=dict)
+    macro_search_depth_multiplier: float = 1.0
+    macro_aggressiveness_bias: float = 0.0
+    ollama_unreachable: bool = False
+    future_events_count: int = 0
+    parsed_events_count: int = 0
+    liquidity_withdrawal_flag: bool = False
+    macro_regime: str = "NEUTRAL"
+    macro_regime_score: float = 0.0
     bid_depth: float = 0.0
     p_sweep_reversal: float = 0.5
+    bayes_trend_continuation: float = 0.0
+    bayes_trend_continuation_confidence: float = 0.0
+    bayes_trend_reversal: float = 0.0
+    bayes_trend_reversal_confidence: float = 0.0
+    bayes_sweep_reversal: float = 0.0
+    bayes_sweep_reversal_confidence: float = 0.0
+    bayes_sweep_continuation: float = 0.0
+    bayes_sweep_continuation_confidence: float = 0.0
+    bayes_ob_respect: float = 0.0
+    bayes_ob_respect_confidence: float = 0.0
+    bayes_ob_violation: float = 0.0
+    bayes_ob_violation_confidence: float = 0.0
+    bayes_fvg_fill: float = 0.0
+    bayes_fvg_fill_confidence: float = 0.0
+    bayes_fvg_reject: float = 0.0
+    bayes_fvg_reject_confidence: float = 0.0
+    bayesian_update_strength: float = 0.0
+    sentiment_score: float = 0.0
+    sentiment_volatility: float = 0.0
+    news_sentiment_score: float = 0.0
+    news_sentiment_volatility: float = 0.0
+    news_macro_impact: float = 0.0
+    news_impact: float = 0.0
+    news_directional_bias: float = 0.0
+    news_confidence: float = 0.0
+    news_snapshot: Dict[str, Any] = field(default_factory=dict)
+    twitter_sentiment_score: float = 0.0
+    twitter_sentiment_volatility: float = 0.0
+    twitter_news_snapshot: Dict[str, Any] = field(default_factory=dict)
     p_sweep_continuation: float = 0.5
     p_ob_hold: float = 0.5
     p_ob_fail: float = 0.5
@@ -99,6 +191,31 @@ class MarketState:
     last_sweep_direction: str = "NONE"
     swept_bsl: bool = False
     swept_ssl: bool = False
+    htf_1h_trend_direction: str = "RANGE"
+    htf_1h_trend_strength: float = 0.0
+    htf_1h_last_bos_direction: str = "NONE"
+    htf_1h_last_choch_direction: str = "NONE"
+    htf_1h_current_leg_type: str = "CORRECTION"
+    htf_1h_last_swing_high: float = 0.0
+    htf_1h_last_swing_low: float = 0.0
+    htf_4h_trend_direction: str = "RANGE"
+    htf_4h_trend_strength: float = 0.0
+    htf_4h_last_bos_direction: str = "NONE"
+    htf_4h_last_choch_direction: str = "NONE"
+    htf_4h_current_leg_type: str = "CORRECTION"
+    htf_4h_last_swing_high: float = 0.0
+    htf_4h_last_swing_low: float = 0.0
+    htf_d_trend_direction: str = "RANGE"
+    htf_d_trend_strength: float = 0.0
+    htf_d_last_bos_direction: str = "NONE"
+    htf_d_last_choch_direction: str = "NONE"
+    htf_d_current_leg_type: str = "CORRECTION"
+    htf_d_last_swing_high: float = 0.0
+    htf_d_last_swing_low: float = 0.0
+    fractal_state: str = "NEUTRAL"
+    fractal_score: float = 0.0
+    htf_ltf_alignment_score: float = 0.0
+    htf_bias: str = "NEUTRAL"
     current_bullish_ob_low: float = 0.0
     current_bullish_ob_high: float = 0.0
     current_bearish_ob_low: float = 0.0
@@ -120,6 +237,46 @@ class MarketState:
     equilibrium_level: float = 0.0
     in_london_killzone: bool = False
     in_ny_killzone: bool = False
+    body_size: float = 0.0
+    upper_wick_size: float = 0.0
+    lower_wick_size: float = 0.0
+    total_range: float = 0.0
+    wick_to_body_upper: float = 0.0
+    wick_to_body_lower: float = 0.0
+    wick_to_body_total: float = 0.0
+    bullish_engulfing: bool = False
+    bearish_engulfing: bool = False
+    inside_bar: bool = False
+    outside_bar: bool = False
+    pin_bar_upper: bool = False
+    pin_bar_lower: bool = False
+    momentum_bar: bool = False
+    exhaustion_bar: bool = False
+    high_volume_candle: bool = False
+    low_volume_candle: bool = False
+    pattern_at_liquidity: bool = False
+    pattern_at_structure: bool = False
+    pattern_context_importance: str = "LOW"
+    poc_price: float = 0.0
+    hvn_levels: list = field(default_factory=list)
+    lvn_levels: list = field(default_factory=list)
+    value_area_low: float = 0.0
+    value_area_high: float = 0.0
+    value_area_coverage: float = 0.0
+    price_vs_value_area_state: str = "UNKNOWN"
+    near_hvn: bool = False
+    near_lvn: bool = False
+    l2_bids: list = field(default_factory=list)
+    l2_asks: list = field(default_factory=list)
+    top_level_imbalance: float = 0.0
+    multi_level_imbalance: float = 0.0
+    spread_ticks: int = 0
+    microstructure_shift: str = "NORMAL"
+    spread_widening: bool = False
+    spread_tightening: bool = False
+    hidden_bid_liquidity: bool = False
+    hidden_ask_liquidity: bool = False
+    queue_position_estimate: float = 0.0
     risk_current_equity: float = 0.0
     risk_open_risk: float = 0.0
     risk_realized_pnl_today: float = 0.0

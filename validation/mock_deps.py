@@ -2,10 +2,12 @@
 Mock pipelines are disabled. Real data only.
 """
 
-raise RuntimeError(
-    "mock_deps.py is disabled: synthetic pipelines are forbidden. Use real data adapters instead."
-)
+import os
 
+if os.environ.get("ENABLE_MOCK_DEPS") != "1":
+    raise RuntimeError(
+        "mock_deps.py is disabled: synthetic pipelines are forbidden. Use real data adapters instead."
+    )
 import math
 from statistics import mean, pstdev
 

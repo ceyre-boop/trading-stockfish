@@ -67,6 +67,4 @@ class TestExecutionSimulatorV4(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-    print(f"    Target size: {result.target_size}")
-    print(f"    Actual filled: {result.actual_filled_size}")
-    print(f"    Fill price: {result.fill_price:.2f}")
+

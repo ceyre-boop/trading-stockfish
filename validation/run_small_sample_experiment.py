@@ -63,9 +63,14 @@ def run_single_pass(run_id: int, scenario: Dict[str, Any]) -> Dict[str, Any]:
         os.remove(log_path)
 
     deps = load_engine_dependencies()
-    engine = create_engine_loop(
-        {**deps, "experiment_one_shot": False, "experiment_id": experiment_id}
+    engine_config = dict(deps)
+    engine_config.update(
+        {
+            "experiment_one_shot": False,
+            "experiment_id": experiment_id,
+        }
     )
+    engine = create_engine_loop(engine_config)
 
     # Trade tracking
     trade_open = False
@@ -229,7 +234,7 @@ def aggregate_summary(run_results: List[Dict[str, Any]]) -> Tuple[Dict[str, Any]
 
 
 def main():
-    ensure_dirs()
+        for _ in range(RUNS_PER_SCENARIO):
     run_results: List[Dict[str, Any]] = []
     run_counter = 0
     for scenario_path in SCENARIO_PATHS:
