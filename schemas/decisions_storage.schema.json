@@ -1,0 +1,49 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://trading-stockfish/schemas/decisions_storage.schema.json",
+  "title": "Decisions Storage (Parquet)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "run_id",
+    "decision_id",
+    "timestamp_utc",
+    "symbol",
+    "timeframe",
+    "session_regime",
+    "macro_regimes",
+    "evaluation_score",
+    "action",
+    "policy_version",
+    "engine_version"
+  ],
+  "properties": {
+    "run_id": { "type": "string" },
+    "decision_id": { "type": "string" },
+    "timestamp_utc": { "type": "string", "format": "date-time" },
+    "symbol": { "type": "string" },
+    "timeframe": { "type": "string" },
+    "session_regime": { "type": "string" },
+    "macro_regimes": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "key_features": {
+      "type": "object",
+      "description": "Flattened or sparse feature map; columnar engines may explode this as needed.",
+      "additionalProperties": { "type": ["number", "string", "null"] }
+    },
+    "evaluation_score": { "type": "number" },
+    "action": { "type": "string" },
+    "outcome_pnl": { "type": ["number", "null"] },
+    "outcome_hit": { "type": ["boolean", "null"] },
+    "outcome_max_drawdown": { "type": ["number", "null"] },
+    "outcome_holding_period_bars": { "type": ["integer", "null"] },
+    "policy_version": { "type": "string" },
+    "engine_version": { "type": "string" },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": { "type": ["string", "number", "null"] }
+    }
+  }
+}

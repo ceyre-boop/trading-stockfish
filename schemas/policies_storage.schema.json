@@ -1,0 +1,39 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://trading-stockfish/schemas/policies_storage.schema.json",
+  "title": "Policies Storage (Parquet)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "policy_version",
+    "timestamp_utc"
+  ],
+  "properties": {
+    "policy_version": { "type": "string" },
+    "timestamp_utc": { "type": "string", "format": "date-time" },
+    "base_weights": {
+      "type": "object",
+      "additionalProperties": { "type": "number" }
+    },
+    "trust": {
+      "type": "object",
+      "additionalProperties": { "type": "number" }
+    },
+    "regime_multipliers": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": { "type": "number" }
+      }
+    },
+    "metadata": {
+      "type": "object",
+      "properties": {
+        "source": { "type": "string" },
+        "notes": { "type": "string" },
+        "engine_version": { "type": "string" }
+      },
+      "additionalProperties": { "type": ["string", "number", "null"] }
+    }
+  }
+}
