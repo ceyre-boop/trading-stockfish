@@ -1,13 +1,13 @@
 {
-  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://trading-stockfish/schemas/feature_spec.schema.json",
   "title": "Feature Spec",
-  "description": "Canonical feature specification schema v1.0.0",
+  "description": "Canonical feature specification schema v1.0.0 (deterministic ordering of feature keys recommended).",
   "type": "object",
   "additionalProperties": false,
   "required": ["version", "features"],
   "properties": {
-    "version": {"type": "string", "enum": ["1.0.0"]},
+    "version": {"type": "string", "const": "1.0.0"},
     "registry_version": {"type": "string"},
     "run_id": {"type": "string"},
     "timestamp_utc": {"type": "string", "format": "date-time"},
@@ -18,14 +18,17 @@
       "patternProperties": {
         "^.+$": {
           "type": "object",
-          "additionalProperties": true,
+          "additionalProperties": false,
           "required": ["source", "path", "dtype", "role", "tags", "live"],
           "properties": {
             "name": {"type": "string"},
             "description": {"type": "string"},
             "source": {"type": "string"},
             "path": {"type": "string"},
-            "dtype": {"type": "string", "enum": ["float", "int", "string", "bool", "category", "array", "object"]},
+            "dtype": {
+              "type": "string",
+              "enum": ["float", "int", "string", "bool", "category", "array", "object"]
+            },
             "role": {
               "type": "array",
               "items": {"type": "string"},
@@ -68,10 +71,51 @@
             "null_ok": {"type": "boolean"},
             "sensitivity": {"type": "string"},
             "provenance": {"type": "object"},
+            "session_modifiers": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "volatility_scale": {"type": "number"},
+                "liquidity_scale": {"type": "number"},
+                "trade_freq_scale": {"type": "number"},
+                "risk_scale": {"type": "number"}
+              }
+            },
             "version": {"type": "string"}
           }
         }
+      },
+      "examples": [
+        {
+          "macro_pressure": {
+            "source": "news",
+            "path": "news.macro.pressure",
+            "dtype": "float",
+            "role": ["eval", "ml"],
+            "tags": ["macro", "risk"],
+            "live": true,
+            "constraints": {"range": {"min": -5, "max": 5}}
+          }
+        }
+      ]
+    }
+  },
+  "examples": [
+    {
+      "version": "1.0.0",
+      "registry_version": "2026.02",
+      "features": {
+        "macro_pressure": {
+          "source": "news",
+          "path": "news.macro.pressure",
+          "dtype": "float",
+          "role": ["eval", "ml"],
+          "tags": ["macro", "risk"],
+          "live": true,
+          "constraints": {"range": {"min": -5, "max": 5}},
+          "session_modifiers": {"risk_scale": 1.0, "liquidity_scale": 1.0}
+        }
       }
     }
-  }
+  ]
 }

@@ -1,13 +1,13 @@
 {
-  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://trading-stockfish/schemas/feature_audit.schema.json",
   "title": "Feature Audit",
-  "description": "Feature audit artifact schema v1.0.0",
+  "description": "Feature audit artifact schema v1.0.0 (issues array ordered deterministically).",
   "type": "object",
   "additionalProperties": false,
   "required": ["version", "timestamp_utc", "issues"],
   "properties": {
-    "version": {"type": "string", "enum": ["1.0.0"]},
+    "version": {"type": "string", "const": "1.0.0"},
     "run_id": {"type": "string"},
     "experiment_id": {"type": "string"},
     "timestamp_utc": {"type": "string", "format": "date-time"},
@@ -27,6 +27,7 @@
     },
     "issues": {
       "type": "array",
+      "minItems": 0,
       "items": {
         "type": "object",
         "additionalProperties": false,
@@ -54,5 +55,27 @@
     },
     "snapshot": {"type": "object"},
     "params": {"type": "object"}
-  }
+  },
+  "examples": [
+    {
+      "version": "1.0.0",
+      "run_id": "run_20260202_A",
+      "timestamp_utc": "2026-02-02T12:30:00Z",
+      "issues": [
+        {
+          "feature": "growth_event_flag",
+          "issue": "constraint_violation",
+          "value": "Housing Starts",
+          "allowed": ["GDP", "PMI", "ISM", "Retail"],
+          "message": "Unexpected category",
+          "path": "macro.events.growth_flag"
+        }
+      ],
+      "summary": {
+        "features_total": 6,
+        "issues_total": 1,
+        "issues_by_type": {"constraint_violation": 1}
+      }
+    }
+  ]
 }

@@ -40,6 +40,42 @@ from volume_profile_features import VolumeProfileConfig, compute_volume_profile_
 LOGGER = logging.getLogger(__name__)
 
 
+def _session_modifiers(session_label: str) -> Dict[str, float]:
+    """Deterministic per-session multipliers for downstream evaluation."""
+
+    base = {
+        "volatility_scale": 1.0,
+        "liquidity_scale": 1.0,
+        "trade_freq_scale": 1.0,
+        "risk_scale": 1.0,
+    }
+    label = (session_label or "").upper()
+    if label == "GLOBEX":
+        base.update(
+            {"volatility_scale": 0.8, "liquidity_scale": 0.7, "risk_scale": 0.9}
+        )
+    elif label == "PREMARKET":
+        base.update({"volatility_scale": 0.9, "liquidity_scale": 0.8})
+    elif label == "RTH_OPEN":
+        base.update(
+            {
+                "volatility_scale": 1.2,
+                "liquidity_scale": 1.2,
+                "trade_freq_scale": 1.3,
+                "risk_scale": 1.1,
+            }
+        )
+    elif label == "MIDDAY":
+        base.update({"volatility_scale": 0.9, "liquidity_scale": 1.0})
+    elif label == "POWER_HOUR":
+        base.update(
+            {"volatility_scale": 1.3, "liquidity_scale": 0.9, "risk_scale": 1.2}
+        )
+    elif label == "CLOSE":
+        base.update({"volatility_scale": 1.1, "liquidity_scale": 0.8})
+    return base
+
+
 class FeatureAudit:
     def __init__(self):
         self.issues: List[Dict[str, Any]] = []
@@ -630,6 +666,7 @@ def build_market_state(
         if session_series
         else compute_session_regime(timestamp or 0.0).value
     )
+    session_modifiers = _session_modifiers(session_label)
     regime_state = regime_engine.compute(
         volatility_state,
         liquidity_state.to_dict(),
@@ -893,6 +930,10 @@ def build_market_state(
         "liquidity_state": liquidity_state.to_dict(),
         "volatility_state": volatility_state,
         "session_regime": session_label,
+        "session_context": {
+            "session": session_label,
+            "modifiers": session_modifiers,
+        },
         "swing_high": trend_struct["swing_high"],
         "swing_low": trend_struct["swing_low"],
         "swing_structure": trend_struct["swing_structure"],

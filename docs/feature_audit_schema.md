@@ -85,4 +85,4 @@ Canonical schema for per-run feature audits emitted by the extractor. Versioned 
 ```
 
 ## JSON Schema
-See `schemas/feature_audit.schema.json` for the machine-validatable contract.
+See `schemas/feature_audit.schema.json` (JSON Schema 2020-12) for the machine-validatable contract.

@@ -1026,6 +1026,12 @@ def evaluate_with_causal(
     def _derive_regimes(ms: Any) -> List[str]:
         regimes: List[str] = []
         try:
+            session_label = getattr(ms, "session", None) or getattr(
+                ms, "session_regime", None
+            )
+            if session_label:
+                regimes.append(str(session_label))
+
             vol_state = getattr(ms, "volatility_state", None)
             if vol_state is not None:
                 vol_reg = getattr(vol_state, "regime", None)
@@ -1061,6 +1067,68 @@ def evaluate_with_causal(
                 dedup.append(str(r))
         return dedup
 
+    def _extract_session_context(
+        ms: Any, legacy_state: Optional[Dict]
+    ) -> Dict[str, Any]:
+        ctx: Dict[str, Any] = {"session": "UNKNOWN", "modifiers": {}}
+        try:
+            session_label = (
+                getattr(ms, "session", None)
+                or getattr(ms, "session_regime", None)
+                or (legacy_state or {}).get("session_regime")
+                or (legacy_state or {}).get("session")
+            )
+            ctx["session"] = str(session_label or "UNKNOWN")
+
+            # Prefer explicit session_context->modifiers shape, then flat session_modifiers, then legacy
+            sc = getattr(ms, "session_context", None)
+            if isinstance(sc, dict) and sc.get("modifiers"):
+                ctx["modifiers"] = sc.get("modifiers", {})
+            else:
+                mods = getattr(ms, "session_modifiers", None)
+                if isinstance(mods, dict):
+                    ctx["modifiers"] = mods
+                else:
+                    ctx["modifiers"] = (
+                        (legacy_state or {})
+                        .get("session_context", {})
+                        .get("modifiers", {})
+                    )
+        except Exception:
+            ctx = {"session": "UNKNOWN", "modifiers": {}}
+        return ctx
+
+    def _print_session_trace(
+        session_ctx: Dict[str, Any], regimes: List[str], factors: List[Dict[str, Any]]
+    ) -> None:
+        try:
+            mods = session_ctx.get("modifiers") or {}
+            print("\n[SESSION CONTEXT]")
+            print(
+                f"  session={session_ctx.get('session', 'UNKNOWN')} | "
+                f"vol_scale={mods.get('volatility_scale', 1.0):.2f} "
+                f"liq_scale={mods.get('liquidity_scale', 1.0):.2f} "
+                f"trade_scale={mods.get('trade_freq_scale', 1.0):.2f} "
+                f"risk_scale={mods.get('risk_scale', 1.0):.2f}"
+            )
+            print(f"  regimes={', '.join(regimes) if regimes else '<none>'}")
+            if factors:
+                print("[SESSION WEIGHTS]")
+                for f in factors:
+                    print(
+                        "  "
+                        f"{f.get('factor', ''):18s} base={f.get('policy_base_weight', 1.0):.3f} "
+                        f"trust={f.get('trust_score', 1.0):.3f} "
+                        f"regime_mult={f.get('regime_multiplier', 1.0):.3f} "
+                        f"session_mult={f.get('session_multiplier', 1.0):.3f} "
+                        f"eff={f.get('policy_weight', 1.0):.3f} "
+                        f"raw={f.get('raw_score', 0.0):.3f} "
+                        f"weighted={f.get('weighted_score', 0.0):.3f}"
+                    )
+        except Exception:
+            # Terminal trace is best-effort only
+            pass
+
     # Convert causal evaluation to decision
     eval_score = result.eval_score
     confidence = result.confidence
@@ -1080,6 +1148,7 @@ def evaluate_with_causal(
     factor_explanations = []
 
     # Apply policy weights/trust if provided (factor names are used as keys)
+    session_context = _extract_session_context(market_state, state)
     policy_applied = policy is not None
     policy_factors = []
     regimes: List[str] = _derive_regimes(market_state) if market_state else []
@@ -1087,6 +1156,7 @@ def evaluate_with_causal(
         # deterministic ordering by factor name
         sorted_factors = sorted(result.scoring_factors, key=lambda f: f.factor_name)
         eval_score = 0.0
+        session_mods = session_context.get("modifiers") or {}
         for factor in sorted_factors:
             trust = policy.get_trust(factor.factor_name) if policy else 1.0
             base_weight = policy.get_base_weight(factor.factor_name) if policy else 1.0
@@ -1095,8 +1165,11 @@ def evaluate_with_causal(
                 if policy
                 else 1.0
             )
+            session_multiplier = float(session_mods.get("risk_scale", 1.0))
             policy_effective_weight = (
-                policy.effective_weight(factor.factor_name, regimes) if policy else 1.0
+                base_weight * trust * regime_multiplier * session_multiplier
+                if policy
+                else 1.0
             )
             combined_weight = factor.weight * policy_effective_weight
             raw_score = factor.score
@@ -1110,12 +1183,14 @@ def evaluate_with_causal(
                     "policy_base_weight": base_weight,
                     "policy_weight": policy_effective_weight,
                     "regime_multiplier": regime_multiplier,
+                    "session_multiplier": session_multiplier,
                     "trust_score": trust,
                     "weighted_score": weighted_score,
                     "explanation": factor.explanation,
                 }
             )
         eval_score = float(np.clip(eval_score, -1.0, 1.0))
+        _print_session_trace(session_context, regimes, policy_factors)
     else:
         sorted_factors = result.scoring_factors
         eval_score = result.eval_score

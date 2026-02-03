@@ -8,7 +8,8 @@ try:
 except ImportError:  # pragma: no cover
     jsonschema = None
 
-BASE = pathlib.Path(__file__).resolve().parent.parent
+ROOT = pathlib.Path(__file__).resolve().parents[2]
+SCHEMAS = ROOT / "schemas"
 
 
 def _load_json(path: pathlib.Path):
@@ -20,9 +21,9 @@ def _skip_if_no_jsonschema():
         pytest.skip("jsonschema not installed")
 
 
-def test_feature_spec_schema_example_validates():
+def test_feature_spec_example_validates():
     _skip_if_no_jsonschema()
-    schema = _load_json(BASE / "schemas" / "feature_spec.schema.json")
+    schema = _load_json(SCHEMAS / "feature_spec.schema.json")
     example = {
         "version": "1.0.0",
         "registry_version": "2026.02",
@@ -35,6 +36,7 @@ def test_feature_spec_schema_example_validates():
                 "tags": ["macro", "risk"],
                 "live": True,
                 "constraints": {"range": {"min": -5, "max": 5}},
+                "session_modifiers": {"risk_scale": 1.0, "liquidity_scale": 1.0},
             },
             "growth_event_flag": {
                 "source": "ontology",
@@ -50,9 +52,9 @@ def test_feature_spec_schema_example_validates():
     jsonschema.validate(instance=example, schema=schema)
 
 
-def test_feature_audit_schema_example_validates():
+def test_feature_audit_example_validates():
     _skip_if_no_jsonschema()
-    schema = _load_json(BASE / "schemas" / "feature_audit.schema.json")
+    schema = _load_json(SCHEMAS / "feature_audit.schema.json")
     example = {
         "version": "1.0.0",
         "run_id": "run_20260202_A",
@@ -74,3 +76,41 @@ def test_feature_audit_schema_example_validates():
         },
     }
     jsonschema.validate(instance=example, schema=schema)
+
+
+def test_round_trip_write_and_validate(tmp_path: pathlib.Path):
+    _skip_if_no_jsonschema()
+    spec_schema = _load_json(SCHEMAS / "feature_spec.schema.json")
+    audit_schema = _load_json(SCHEMAS / "feature_audit.schema.json")
+
+    feature_spec = {
+        "version": "1.0.0",
+        "registry_version": "2026.02",
+        "features": {
+            "session_bias": {
+                "source": "derived",
+                "path": "session.bias.score",
+                "dtype": "float",
+                "role": ["eval"],
+                "tags": ["session", "risk"],
+                "live": True,
+                "session_modifiers": {"risk_scale": 1.1, "trade_freq_scale": 1.2},
+            }
+        },
+    }
+    feature_audit = {
+        "version": "1.0.0",
+        "run_id": "run_test",
+        "timestamp_utc": "2026-02-02T00:00:00Z",
+        "issues": [],
+        "summary": {"features_total": 1, "issues_total": 0, "issues_by_type": {}},
+        "snapshot": {"session_bias": {"mean": 0.0, "std": 0.0}},
+    }
+
+    spec_path = tmp_path / "feature_spec.json"
+    audit_path = tmp_path / "feature_audit.json"
+    spec_path.write_text(json.dumps(feature_spec, indent=2), encoding="utf-8")
+    audit_path.write_text(json.dumps(feature_audit, indent=2), encoding="utf-8")
+
+    jsonschema.validate(instance=_load_json(spec_path), schema=spec_schema)
+    jsonschema.validate(instance=_load_json(audit_path), schema=audit_schema)

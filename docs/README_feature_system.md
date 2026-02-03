@@ -19,6 +19,6 @@ Deterministic, audited feature pipeline: registry → extractor → audit → dr
 7) **Runner**: passes policy into evaluations/tournaments; outputs are deterministic and auditable.
 
 ## Testing guidance
-- Validate registry and audits against JSON Schemas in `schemas/`.
+- Validate registry and audits against JSON Schemas in `schemas/` (see `tests/schema/` for examples).
 - Drift detector tests cover spikes, missingness, new categories, ordering.
 - Add round-trip tests: registry → audit → drift → stats → policy → evaluator.

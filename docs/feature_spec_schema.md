@@ -31,6 +31,7 @@ Canonical contract for feature definitions used by registry → extractor → au
 - `null_ok` (bool, default false): whether null/None is permitted.
 - `sensitivity` (string, optional): classification (e.g., `public`, `internal`, `restricted`).
 - `provenance` (object, optional): author, ticket, rationale.
+- `session_modifiers` (object, optional): deterministic per-session multipliers (`volatility_scale`, `liquidity_scale`, `trade_freq_scale`, `risk_scale`) used by policy/evaluator.
 - `version` (string, optional): per-feature semantic version if independently versioned.
 
 ## Validation rules
@@ -98,4 +99,4 @@ Canonical contract for feature definitions used by registry → extractor → au
 ```
 
 ## JSON Schema
-See `schemas/feature_spec.schema.json` for the machine-validatable contract.
+See `schemas/feature_spec.schema.json` (JSON Schema 2020-12) for the machine-validatable contract.

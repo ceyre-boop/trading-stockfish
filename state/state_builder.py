@@ -68,6 +68,7 @@ from engine.order_flow_features import OrderFlowFeatures
 from engine.trend_structure import compute_trend_structure
 from engine.volatility_features import VolatilityFeatures
 from engine.volatility_utils import compute_atr
+from session_regime import compute_session_regime
 
 try:
     import MetaTrader5 as mt5
@@ -76,6 +77,43 @@ try:
 except ImportError:
     MT5_AVAILABLE = False
     logging.warning("MetaTrader5 not available - will run in mock mode")
+
+
+def _session_modifiers(session_label: str) -> Dict[str, float]:
+    """Return deterministic session multipliers used by downstream policy/evaluator."""
+
+    base = {
+        "volatility_scale": 1.0,
+        "liquidity_scale": 1.0,
+        "trade_freq_scale": 1.0,
+        "risk_scale": 1.0,
+    }
+    label = (session_label or "").upper()
+    if label == "GLOBEX":
+        base.update(
+            {"volatility_scale": 0.8, "liquidity_scale": 0.7, "risk_scale": 0.9}
+        )
+    elif label == "PREMARKET":
+        base.update({"volatility_scale": 0.9, "liquidity_scale": 0.8})
+    elif label == "RTH_OPEN":
+        base.update(
+            {
+                "volatility_scale": 1.2,
+                "liquidity_scale": 1.2,
+                "trade_freq_scale": 1.3,
+                "risk_scale": 1.1,
+            }
+        )
+    elif label == "MIDDAY":
+        base.update({"volatility_scale": 0.9, "liquidity_scale": 1.0})
+    elif label == "POWER_HOUR":
+        base.update(
+            {"volatility_scale": 1.3, "liquidity_scale": 0.9, "risk_scale": 1.2}
+        )
+    elif label == "CLOSE":
+        base.update({"volatility_scale": 1.1, "liquidity_scale": 0.8})
+    return base
+
 
 # Configure logging
 logging.basicConfig(
@@ -549,6 +587,15 @@ def build_state(
         mid_prices.append((tick_data.get("bid", 0.0) + tick_data.get("ask", 0.0)) / 2)
         vol_features.compute(mid_prices[-1], candle_data=indicators)
 
+    # Session regime + deterministic modifiers for downstream policy/evaluator
+    session_label = "UNKNOWN"
+    try:
+        ts_source = float(tick_data.get("last_tick_time") or time.time())
+        session_label = compute_session_regime(ts_source).value
+    except Exception:
+        session_label = "UNKNOWN"
+    session_modifiers = _session_modifiers(session_label)
+
     # Assemble complete state
     state = {
         "timestamp": time.time(),
@@ -559,6 +606,11 @@ def build_state(
         "trend": trend,
         "sentiment": sentiment,
         "health": health,
+        "session_regime": session_label,
+        "session_context": {
+            "session": session_label,
+            "modifiers": session_modifiers,
+        },
     }
 
     if order_book:
@@ -666,9 +718,6 @@ def validate_state(state: Optional[Dict]) -> Tuple[bool, List[str]]:
 
 def _mock_tick_data(symbol: str) -> Dict:
     raise RuntimeError("Mock tick data is disabled; real market data required")
-
-        "Direct execution with demo/mock data is disabled; use real feeds"
-    )
 
 
 def _ensure_valid_tick_data(tick_data: Dict) -> None:
