@@ -62,6 +62,14 @@ See `PROJECT_PLAN.md` for step-by-step module generation prompts.
 - `requests` - HTTP client (for news/sentiment APIs)
 - `python-dotenv` - Environment configuration
 
+## Feature Drift Detection
+
+Use the drift detector to monitor feature health from audit logs.
+
+- Run: `python -m analytics.feature_drift_detector --audit-dir logs/feature_audits --out logs/drift_reports/drift_report.json --window 20 --spike-factor 3 --abs-threshold 3 --missing-frac-threshold 0.8`
+- Flags: `window` (baseline runs), `spike-factor` (relative anomaly), `abs-threshold` (minimum absolute spike), `missing-frac-threshold` (persistent missingness cutoff).
+- Output: JSON report with run metadata, sorted findings per feature, and aggregates at `logs/drift_reports/drift_report.json`.
+
 ## Next Steps
 
 1. Generate `state/state_builder.py` with live MT5 data pulling
@@ -72,4 +80,4 @@ See `PROJECT_PLAN.md` for step-by-step module generation prompts.
 
 ---
 
-*Last Updated: January 16, 2026*
+*Last Updated: February 2, 2026*

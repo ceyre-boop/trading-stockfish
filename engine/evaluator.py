@@ -25,6 +25,8 @@ CausalEvaluator Integration:
 import logging
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
+import numpy as np
+
 from . import test_flags
 from .abs_balance_controller import BALANCE_CONTROLLER
 from .canonical_validator import (
@@ -986,6 +988,7 @@ def evaluate_with_causal(
     state: Dict,
     causal_evaluator: Optional[Any] = None,
     market_state: Optional[Any] = None,
+    policy: Optional[Any] = None,
 ) -> Dict:
     """
     Evaluate market state using CausalEvaluator (Stockfish-style).
@@ -997,6 +1000,7 @@ def evaluate_with_causal(
         state: Traditional market state dictionary (legacy format)
         causal_evaluator: Initialized CausalEvaluator instance
         market_state: CausalEvaluator MarketState dataclass (preferred)
+        policy: Optional policy config (PolicyConfig) for feature weights/trust
 
     Returns:
         Dict with decision, confidence, reason, and full causal reasoning
@@ -1019,6 +1023,44 @@ def evaluate_with_causal(
         logger.error(f"CausalEvaluator failed: {e}")
         raise
 
+    def _derive_regimes(ms: Any) -> List[str]:
+        regimes: List[str] = []
+        try:
+            vol_state = getattr(ms, "volatility_state", None)
+            if vol_state is not None:
+                vol_reg = getattr(vol_state, "regime", None)
+                if vol_reg is not None:
+                    regimes.append(str(getattr(vol_reg, "name", vol_reg)))
+
+            macro_news = getattr(ms, "macro_news_state", None)
+            macro_label = (
+                getattr(macro_news, "macro_news_state", None) if macro_news else None
+            )
+            if macro_label:
+                upper_label = str(macro_label).upper()
+                if "RISK_ON" in upper_label:
+                    regimes.append("MACRO_ON")
+                elif "RISK_OFF" in upper_label:
+                    regimes.append("MACRO_OFF")
+
+            macro_state = getattr(ms, "macro_state", None)
+            sentiment = (
+                getattr(macro_state, "sentiment_score", None) if macro_state else None
+            )
+            if sentiment is not None:
+                if sentiment > 0.2:
+                    regimes.append("MACRO_ON")
+                elif sentiment < -0.2:
+                    regimes.append("MACRO_OFF")
+        except Exception:
+            pass
+
+        dedup: List[str] = []
+        for r in regimes:
+            if r and r not in dedup:
+                dedup.append(str(r))
+        return dedup
+
     # Convert causal evaluation to decision
     eval_score = result.eval_score
     confidence = result.confidence
@@ -1036,13 +1078,74 @@ def evaluate_with_causal(
 
     # Build reasoning from causal factors
     factor_explanations = []
-    for factor in result.scoring_factors:
+
+    # Apply policy weights/trust if provided (factor names are used as keys)
+    policy_applied = policy is not None
+    policy_factors = []
+    regimes: List[str] = _derive_regimes(market_state) if market_state else []
+    if policy_applied:
+        # deterministic ordering by factor name
+        sorted_factors = sorted(result.scoring_factors, key=lambda f: f.factor_name)
+        eval_score = 0.0
+        for factor in sorted_factors:
+            trust = policy.get_trust(factor.factor_name) if policy else 1.0
+            base_weight = policy.get_base_weight(factor.factor_name) if policy else 1.0
+            regime_multiplier = (
+                policy.get_regime_multiplier(factor.factor_name, regimes)
+                if policy
+                else 1.0
+            )
+            policy_effective_weight = (
+                policy.effective_weight(factor.factor_name, regimes) if policy else 1.0
+            )
+            combined_weight = factor.weight * policy_effective_weight
+            raw_score = factor.score
+            weighted_score = 0.0 if trust == 0 else raw_score * combined_weight
+            eval_score += weighted_score
+            policy_factors.append(
+                {
+                    "factor": factor.factor_name,
+                    "raw_score": raw_score,
+                    "weight": factor.weight,
+                    "policy_base_weight": base_weight,
+                    "policy_weight": policy_effective_weight,
+                    "regime_multiplier": regime_multiplier,
+                    "trust_score": trust,
+                    "weighted_score": weighted_score,
+                    "explanation": factor.explanation,
+                }
+            )
+        eval_score = float(np.clip(eval_score, -1.0, 1.0))
+    else:
+        sorted_factors = result.scoring_factors
+        eval_score = result.eval_score
+        for factor in sorted_factors:
+            policy_factors.append(
+                {
+                    "factor": factor.factor_name,
+                    "raw_score": factor.score,
+                    "weight": factor.weight,
+                    "policy_base_weight": 1.0,
+                    "policy_weight": 1.0,
+                    "regime_multiplier": 1.0,
+                    "trust_score": 1.0,
+                    "weighted_score": factor.score * factor.weight,
+                    "explanation": factor.explanation,
+                }
+            )
+
+    for pf in policy_factors:
         factor_explanations.append(
             {
-                "factor": factor.factor_name,
-                "score": factor.score,
-                "weight": factor.weight,
-                "explanation": factor.explanation,
+                "factor": pf["factor"],
+                "score": pf["raw_score"],
+                "weight": pf["weight"],
+                "policy_base_weight": pf.get("policy_base_weight", 1.0),
+                "policy_weight": pf["policy_weight"],
+                "regime_multiplier": pf.get("regime_multiplier", 1.0),
+                "trust_score": pf["trust_score"],
+                "weighted_score": pf["weighted_score"],
+                "explanation": pf.get("explanation"),
             }
         )
 
@@ -1054,6 +1157,7 @@ def evaluate_with_causal(
         "causal_reasoning": factor_explanations,
         "timestamp": result.timestamp,
         "evaluator_mode": "causal",
+        "policy_applied": policy_applied,
         "details": {
             "causal_eval": eval_score,
             "factors": factor_explanations,

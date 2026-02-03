@@ -96,7 +96,7 @@ def _strip_html(body: str) -> str:
     return unescape(body).strip()
 
 
-def _fetch_full_text(detail_link: str) -> Tuple[str, bool]:
+def _fetch_full_text(detail_link: str, timeout: float = 3.0) -> Tuple[str, bool]:
     if not detail_link:
         return "", False
     candidates = [detail_link]
@@ -104,7 +104,12 @@ def _fetch_full_text(detail_link: str) -> Tuple[str, bool]:
         candidates.append(f"https://r.jina.ai/{detail_link}")
     for url in candidates:
         try:
-            resp = requests.get(url, timeout=20, headers={"User-Agent": "Mozilla/5.0"})
+            resp = requests.get(
+                url,
+                timeout=timeout,
+                headers={"User-Agent": "Mozilla/5.0"},
+                verify=False,
+            )
             resp.raise_for_status()
             return _strip_html(resp.text), True
         except Exception:
@@ -177,12 +182,20 @@ def fetch_raw_events(urls: List[str] = FEED_URLS) -> List[Dict]:
     return events
 
 
-def collect_calendar_snapshot(urls: List[str] = FEED_URLS) -> Dict:
+def collect_calendar_snapshot(
+    urls: List[str] = FEED_URLS,
+    skip_full_text: bool = False,
+    full_text_timeout: float = 3.0,
+) -> Dict:
     raw_events = fetch_raw_events(urls)
     # Enrich with full_text when detail_link is present.
     for evt in raw_events:
+        if skip_full_text:
+            if not evt.get("full_text"):
+                evt["full_text"] = _fallback_text(evt)
+            continue
         detail_link = evt.get("detail_link", "")
-        full_text, ok = _fetch_full_text(detail_link)
+        full_text, ok = _fetch_full_text(detail_link, timeout=full_text_timeout)
         if ok and full_text:
             evt["full_text"] = full_text
         elif not evt.get("full_text"):
@@ -244,15 +257,34 @@ def persist_raw_events(events: List[Dict], db_path: Path = RAW_DB) -> Dict:
 
 
 if __name__ == "__main__":
+    import argparse
     import json
 
-    snapshot = collect_calendar_snapshot()
+    parser = argparse.ArgumentParser(description="ForexFactory calendar scraper")
+    parser.add_argument(
+        "--skip-full-text",
+        action="store_true",
+        help="Skip fetching detail page full_text (use fallback summary instead)",
+    )
+    parser.add_argument(
+        "--full-text-timeout",
+        type=float,
+        default=3.0,
+        help="Timeout in seconds for full_text fetch (default: 3)",
+    )
+    args = parser.parse_args()
+
+    snapshot = collect_calendar_snapshot(
+        skip_full_text=args.skip_full_text, full_text_timeout=args.full_text_timeout
+    )
     stats = persist_raw_events(snapshot.get("events", []), RAW_DB)
     print(
         json.dumps(
             {
                 "fetched": len(snapshot.get("events", [])),
                 **stats,
+                "skip_full_text": args.skip_full_text,
+                "full_text_timeout": args.full_text_timeout,
             },
             indent=2,
         )

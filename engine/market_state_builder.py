@@ -3,12 +3,15 @@ Market State Builder v4.0‑C
 Injects liquidity block into MarketState.
 """
 
+import datetime
 import json
+import logging
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from bayesian_probability_engine import compute_bayesian_probabilities
 from candle_pattern_features import compute_candle_pattern_features
+from config.feature_registry import load_registry
 from engine.amd_features import AMDFeatures
 from engine.liquidity_features import LiquidityFeatures
 from engine.macro_bayes_model import adjust_bayesian_priors
@@ -33,6 +36,72 @@ from session_regime import SessionRegime, compute_session_regime
 from structure_features import compute_structure_features
 from trend_indicator_features import compute_trend_indicator_features
 from volume_profile_features import VolumeProfileConfig, compute_volume_profile_features
+
+LOGGER = logging.getLogger(__name__)
+
+
+class FeatureAudit:
+    def __init__(self):
+        self.issues: List[Dict[str, Any]] = []
+        self.summary: Dict[str, int] = {
+            "missing_alias": 0,
+            "missing_value": 0,
+            "type_mismatch": 0,
+            "constraint_violation": 0,
+        }
+
+    def record(
+        self,
+        issue: str,
+        feature: str,
+        alias: str,
+        segment: Optional[str] = None,
+        role: Optional[List[str]] = None,
+        tags: Optional[List[str]] = None,
+        value: Any = None,
+        allowed: Optional[List[str]] = None,
+        detail: Optional[str] = None,
+    ) -> None:
+        self.summary[issue] = self.summary.get(issue, 0) + 1
+        entry = {
+            "feature": feature,
+            "alias": alias,
+            "issue": issue,
+            "segment": segment,
+            "role": role or [],
+            "tags": tags or [],
+            "value": value,
+            "allowed": allowed or [],
+        }
+        if detail:
+            entry["detail"] = detail
+        self.issues.append(entry)
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {"issues": self.issues, "summary": self.summary}
+
+
+def get_default_audit_path(
+    run_id: Optional[str] = None,
+    experiment_id: Optional[str] = None,
+    base_dir: Path | str = Path("logs/feature_audits"),
+) -> str:
+    """Return a default path for feature audit artifacts (timestamped JSON).
+
+    Priority: explicit run_id > experiment_id > UTC timestamp. A UTC timestamp
+    suffix is always added to keep paths collision-free.
+    """
+    ts = datetime.datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+    label = run_id or experiment_id
+    if label:
+        filename = f"{label}_{ts}.json"
+    else:
+        filename = f"{ts}.json"
+    return str(Path(base_dir) / filename)
+
+
+# Registry is loaded once and reused for deterministic feature selection.
+FEATURE_REGISTRY = load_registry()
 
 
 class LiquidityState:
@@ -114,6 +183,317 @@ def _filter_records(records: List[Dict[str, Any]], source: str) -> List[Dict[str
     return [r for r in records if str(r.get("source", "")).lower() == source]
 
 
+def _normalize_conf(value: Any) -> float:
+    try:
+        v = float(value)
+    except Exception:
+        return 0.0
+    v = v / 100.0 if v > 1.0 else v
+    return max(0.0, min(1.0, v))
+
+
+def _macro_event_signals(records: List[Dict[str, Any]]) -> Dict[str, float]:
+    impact_map = {"LOW": 0.3, "MEDIUM": 0.6, "HIGH": 1.0}
+    bias_map = {"UP": 1.0, "DOWN": -1.0, "NEUTRAL": 0.0}
+
+    if not records:
+        return {
+            "macro_event_bias": 0.0,
+            "macro_event_confidence": 0.0,
+            "macro_event_pressure": 0.0,
+            "macro_event_volatility": 0.0,
+        }
+
+    weighted_bias = 0.0
+    total_weight = 0.0
+    total_conf = 0.0
+    vol_hint = 0.0
+    max_pressure = 0.0
+
+    for rec in records:
+        impact = impact_map.get(str(rec.get("impact_level", "MEDIUM")).upper(), 0.6)
+        bias = bias_map.get(str(rec.get("directional_bias", "NEUTRAL")).upper(), 0.0)
+        conf = _normalize_conf(rec.get("confidence", 0.0))
+        vol = max(0.0, min(1.0, float(rec.get("sentiment_volatility", 0.0) or 0.0)))
+
+        weight = impact * max(conf, 0.1)
+        weighted_bias += bias * weight
+        total_weight += weight
+        total_conf += conf
+        vol_hint = max(vol_hint, impact * (0.5 + 0.5 * conf))
+        max_pressure = max(max_pressure, impact * conf)
+
+    avg_bias = weighted_bias / total_weight if total_weight else 0.0
+    avg_conf = total_conf / len(records)
+
+    return {
+        "macro_event_bias": max(-1.0, min(1.0, avg_bias)),
+        "macro_event_confidence": max(0.0, min(1.0, avg_conf)),
+        "macro_event_pressure": max(0.0, min(1.0, max_pressure)),
+        "macro_event_volatility": max(0.0, min(1.0, vol_hint)),
+    }
+
+
+def _resolve_with_trace(source: Any, path: str) -> tuple[Any, Optional[str]]:
+    curr: Any = source
+    for part in path.split("."):
+        if isinstance(curr, dict):
+            if part not in curr:
+                return None, part
+            curr = curr.get(part)
+            continue
+        if isinstance(curr, list):
+            if part.isdigit():
+                idx = int(part)
+                if 0 <= idx < len(curr):
+                    curr = curr[idx]
+                    continue
+                return None, part
+            return None, part
+        return None, part
+    return curr, None
+
+
+def _apply_transform(value: Any, transform: Dict[str, Any]) -> Any:
+    kind = (transform or {}).get("kind", "none")
+    params = (transform or {}).get("params", {})
+    try:
+        if kind == "none":
+            return value
+        if kind == "minmax":
+            v = float(value) if value is not None else 0.0
+            vmin = float(params.get("min", 0.0))
+            vmax = float(params.get("max", 1.0))
+            denom = vmax - vmin or 1.0
+            return max(0.0, min(1.0, (v - vmin) / denom))
+        if kind == "zscore":
+            # Without historical context, fallback to raw value.
+            return value
+        if kind == "log":
+            import math
+
+            v = float(value) if value is not None else 0.0
+            return math.log(max(v, 1e-9))
+    except Exception:
+        return value
+    return value
+
+
+def _apply_encoding(value: Any, encoding: Dict[str, Any]) -> Any:
+    kind = (encoding or {}).get("kind", "none")
+    if kind == "none":
+        return value
+    if kind == "one_hot":
+        if value is None:
+            return {}
+        return {str(value): 1}
+    if kind == "ordinal":
+        return value
+    return value
+
+
+def _feature_raw_value(
+    spec, state: Dict[str, Any], audit: Optional[FeatureAudit] = None
+) -> Any:
+    path = spec.alias or spec.name
+    raw, missing = _resolve_with_trace(state, path)
+    if missing:
+        LOGGER.warning(
+            "[FeatureRegistry] Missing alias path for feature '%s': %s (missing segment: %s, role=%s, tags=%s)",
+            spec.name,
+            path,
+            missing,
+            spec.role,
+            spec.tags,
+        )
+        if audit:
+            audit.record(
+                "missing_alias",
+                feature=spec.name,
+                alias=path,
+                segment=missing,
+                role=spec.role,
+                tags=spec.tags,
+            )
+        return False if spec.name == "growth_event_flag" else None
+
+    if spec.name == "growth_event_flag":
+        allowed = set((spec.constraints or {}).get("allowed_values", [])) or {
+            "GDP",
+            "PMI",
+            "ISM",
+            "DURABLE",
+            "GDP_ADV",
+        }
+
+        if raw is None:
+            LOGGER.warning(
+                "[FeatureRegistry] Missing growth event value for feature '%s': alias=%s allowed=%s",
+                spec.name,
+                path,
+                sorted(allowed),
+            )
+            if audit:
+                audit.record(
+                    "missing_value",
+                    feature=spec.name,
+                    alias=path,
+                    role=spec.role,
+                    tags=spec.tags,
+                    allowed=sorted(allowed),
+                )
+            return False
+
+        if isinstance(raw, list):
+            normalized = [str(v).upper() for v in raw if v is not None]
+            matched = any(v in allowed for v in normalized)
+            if not matched:
+                LOGGER.warning(
+                    "[FeatureRegistry] Growth event not allowed for feature '%s': value=%s allowed=%s",
+                    spec.name,
+                    raw,
+                    sorted(allowed),
+                )
+                if audit:
+                    audit.record(
+                        "constraint_violation",
+                        feature=spec.name,
+                        alias=path,
+                        role=spec.role,
+                        tags=spec.tags,
+                        value=raw,
+                        allowed=sorted(allowed),
+                    )
+            return matched
+
+        if isinstance(raw, dict):
+            category = raw.get("category") if isinstance(raw, dict) else None
+            if category is None:
+                LOGGER.warning(
+                    "[FeatureRegistry] Missing category in growth event dict for feature '%s': alias=%s",
+                    spec.name,
+                    path,
+                )
+                if audit:
+                    audit.record(
+                        "missing_value",
+                        feature=spec.name,
+                        alias=path,
+                        role=spec.role,
+                        tags=spec.tags,
+                    )
+                return False
+            evt = str(category).upper()
+            if evt in allowed:
+                return True
+            LOGGER.warning(
+                "[FeatureRegistry] Growth event not allowed for feature '%s': value=%s allowed=%s",
+                spec.name,
+                category,
+                sorted(allowed),
+            )
+            if audit:
+                audit.record(
+                    "constraint_violation",
+                    feature=spec.name,
+                    alias=path,
+                    role=spec.role,
+                    tags=spec.tags,
+                    value=category,
+                    allowed=sorted(allowed),
+                )
+            return False
+
+        evt = str(raw).upper()
+        if evt in allowed:
+            return True
+        LOGGER.warning(
+            "[FeatureRegistry] Growth event not allowed for feature '%s': value=%s allowed=%s",
+            spec.name,
+            raw,
+            sorted(allowed),
+        )
+        if audit:
+            audit.record(
+                "constraint_violation",
+                feature=spec.name,
+                alias=path,
+                role=spec.role,
+                tags=spec.tags,
+                value=raw,
+                allowed=sorted(allowed),
+            )
+        return False
+
+    allowed_values = (spec.constraints or {}).get("allowed_values")
+    if allowed_values:
+        allowed_set = set(str(v) for v in allowed_values)
+        if isinstance(raw, list):
+            LOGGER.warning(
+                "[FeatureRegistry] Type mismatch for feature '%s': expected category, got list at alias=%s",
+                spec.name,
+                path,
+            )
+            if audit:
+                audit.record(
+                    "type_mismatch",
+                    feature=spec.name,
+                    alias=path,
+                    role=spec.role,
+                    tags=spec.tags,
+                    value=raw,
+                )
+            return None
+        if isinstance(raw, (float, int)) and not isinstance(raw, bool):
+            LOGGER.warning(
+                "[FeatureRegistry] Type mismatch for feature '%s': expected category, got numeric at alias=%s",
+                spec.name,
+                path,
+            )
+            if audit:
+                audit.record(
+                    "type_mismatch",
+                    feature=spec.name,
+                    alias=path,
+                    role=spec.role,
+                    tags=spec.tags,
+                    value=raw,
+                )
+            return None
+        value_str = None if raw is None else str(raw)
+        if value_str is not None and value_str not in allowed_set:
+            LOGGER.warning(
+                "[FeatureRegistry] Value outside allowed set for feature '%s': value=%s allowed=%s",
+                spec.name,
+                raw,
+                sorted(allowed_set),
+            )
+            if audit:
+                audit.record(
+                    "constraint_violation",
+                    feature=spec.name,
+                    alias=path,
+                    role=spec.role,
+                    tags=spec.tags,
+                    value=raw,
+                    allowed=sorted(allowed_set),
+                )
+            return False if spec.type == "boolean" else None
+
+    return raw
+
+
+def _build_feature_vector(state: Dict[str, Any]) -> tuple[Dict[str, Any], FeatureAudit]:
+    features: Dict[str, Any] = {}
+    audit = FeatureAudit()
+    for name, spec in FEATURE_REGISTRY.specs.items():
+        raw = _feature_raw_value(spec, state, audit=audit)
+        transformed = _apply_transform(raw, spec.transform)
+        encoded = _apply_encoding(transformed, spec.encoding)
+        features[name] = encoded
+    return features, audit
+
+
 def _future_event_metrics(snapshot: Dict[str, Any]) -> Dict[str, Any]:
     future = snapshot.get("future_events", []) if isinstance(snapshot, dict) else []
     if not isinstance(future, list):
@@ -145,6 +525,10 @@ def build_market_state(
     twitter_news_snapshot: Optional[Dict[str, Any]] = None,
     news_ollama_snapshot: Optional[Dict[str, Any]] = None,
     news_snapshot_path: Optional[str] = None,
+    audit_output_path: Optional[str] = None,
+    run_id: Optional[str] = None,
+    experiment_id: Optional[str] = None,
+    include_feature_snapshot: bool = False,
 ) -> Dict:
     # Volatility and regime imports
     from engine.regime_engine import RegimeEngine
@@ -467,15 +851,22 @@ def build_market_state(
 
     twitter_records = _filter_records(parsed_records, "twitter")
     twitter_features = _aggregate_news_features(twitter_records)
+    macro_event_features = _macro_event_signals(parsed_records)
     future_metrics = _future_event_metrics(news_snapshot)
-    risk_window_label = (
-        "RISK_WINDOW"
-        if abs(future_metrics.get("next_event_time_delta", 9999)) <= 30
-        else "NONE"
+    risk_window_label = "RISK_WINDOW"
+    if (
+        abs(future_metrics.get("next_event_time_delta", 9999)) > 30
+        and macro_event_features["macro_event_volatility"] < 0.5
+    ):
+        risk_window_label = "NONE"
+
+    combined_macro_pressure = max(
+        future_metrics["macro_pressure_score"],
+        macro_event_features["macro_event_pressure"],
     )
 
     macro_risk = compute_macro_risk_adjustment(
-        future_metrics["macro_pressure_score"],
+        combined_macro_pressure,
         future_metrics["next_event_time_delta"],
         future_metrics["next_event_impact"],
     )
@@ -487,12 +878,12 @@ def build_market_state(
     }
     macro_adjusted_priors = adjust_bayesian_priors(
         base_priors,
-        future_metrics["macro_pressure_score"],
+        combined_macro_pressure,
         future_metrics["next_event_impact"],
     )
 
     search_modulation = compute_search_modulation(
-        future_metrics["macro_pressure_score"], future_metrics["next_event_time_delta"]
+        combined_macro_pressure, future_metrics["next_event_time_delta"]
     )
 
     state = {
@@ -522,6 +913,10 @@ def build_market_state(
         "news_impact": news_features["news_macro_impact"],
         "news_directional_bias": news_features["news_directional_bias"],
         "news_confidence": news_features["news_confidence"],
+        "macro_event_bias": macro_event_features["macro_event_bias"],
+        "macro_event_confidence": macro_event_features["macro_event_confidence"],
+        "macro_event_pressure": macro_event_features["macro_event_pressure"],
+        "macro_event_volatility": macro_event_features["macro_event_volatility"],
         "news_snapshot": news_snapshot,
         "ollama_unreachable": ollama_unreachable,
         "future_events_count": future_metrics["future_events_count"],
@@ -529,14 +924,13 @@ def build_market_state(
         "next_event_type": future_metrics["next_event_type"],
         "next_event_time_delta": future_metrics["next_event_time_delta"],
         "next_event_impact": future_metrics["next_event_impact"],
-        "macro_pressure_score": future_metrics["macro_pressure_score"],
+        "macro_pressure_score": combined_macro_pressure,
         "macro_entry_allowed": macro_risk["entry_allowed"],
         "macro_position_size_multiplier": macro_risk["position_size_multiplier"],
         "macro_max_leverage_multiplier": macro_risk["max_leverage_multiplier"],
         "macro_adjusted_priors": macro_adjusted_priors,
         "macro_search_depth_multiplier": search_modulation["search_depth_multiplier"],
         "macro_aggressiveness_bias": search_modulation["aggressiveness_bias"],
-        "event_risk_window": risk_window_label,
         "twitter_sentiment_score": twitter_features["news_sentiment_score"],
         "twitter_sentiment_volatility": twitter_features["news_sentiment_volatility"],
         "twitter_news_snapshot": {
@@ -639,7 +1033,7 @@ def build_market_state(
         "macd_bearish_divergence": momentum_indicators_v2["macd_bearish_divergence"],
         "next_event_type": news_macro_state["next_event_type"],
         "next_event_time_delta": news_macro_state["next_event_time_delta"],
-        "event_risk_window": news_macro_state["event_risk_window"],
+        "event_risk_window": risk_window_label,
         "expected_volatility_state": news_macro_state["expected_volatility_state"],
         "expected_volatility_score": news_macro_state["expected_volatility_score"],
         "liquidity_withdrawal_flag": news_macro_state["liquidity_withdrawal_flag"],
@@ -721,4 +1115,30 @@ def build_market_state(
         "health": {"is_stale": False, "errors": []},
     }
     state.update(mtf_features)
+    # Registry-driven feature extraction for downstream consumers, with audit log.
+    features, audit = _build_feature_vector(state)
+    state["features"] = features
+
+    audit_payload = audit.to_dict()
+    audit_payload.update(
+        {
+            "run_id": run_id,
+            "experiment_id": experiment_id,
+            "timestamp_utc": datetime.datetime.utcnow()
+            .replace(microsecond=0)
+            .isoformat()
+            + "Z",
+            "registry_version": getattr(FEATURE_REGISTRY, "version", None),
+            "engine_version": None,
+        }
+    )
+    if include_feature_snapshot:
+        audit_payload["features_snapshot"] = features
+
+    state["feature_audit"] = audit_payload
+
+    if audit_output_path:
+        audit_path = Path(audit_output_path)
+        audit_path.parent.mkdir(parents=True, exist_ok=True)
+        audit_path.write_text(json.dumps(audit_payload, indent=2), encoding="utf-8")
     return state

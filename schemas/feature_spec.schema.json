@@ -1,0 +1,77 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://trading-stockfish/schemas/feature_spec.schema.json",
+  "title": "Feature Spec",
+  "description": "Canonical feature specification schema v1.0.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "features"],
+  "properties": {
+    "version": {"type": "string", "enum": ["1.0.0"]},
+    "registry_version": {"type": "string"},
+    "run_id": {"type": "string"},
+    "timestamp_utc": {"type": "string", "format": "date-time"},
+    "features": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": false,
+      "patternProperties": {
+        "^.+$": {
+          "type": "object",
+          "additionalProperties": true,
+          "required": ["source", "path", "dtype", "role", "tags", "live"],
+          "properties": {
+            "name": {"type": "string"},
+            "description": {"type": "string"},
+            "source": {"type": "string"},
+            "path": {"type": "string"},
+            "dtype": {"type": "string", "enum": ["float", "int", "string", "bool", "category", "array", "object"]},
+            "role": {
+              "type": "array",
+              "items": {"type": "string"},
+              "minItems": 1
+            },
+            "tags": {
+              "type": "array",
+              "items": {"type": "string"},
+              "minItems": 1
+            },
+            "required": {"type": "boolean"},
+            "live": {"type": "boolean"},
+            "default": {},
+            "constraints": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "allowed_values": {"type": "array", "items": {}},
+                "range": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "min": {"type": "number"},
+                    "max": {"type": "number"}
+                  }
+                },
+                "regex": {"type": "string"},
+                "dtype_strict": {"type": "boolean"}
+              }
+            },
+            "encodings": {"type": "object"},
+            "transform": {
+              "type": "array",
+              "items": {"type": "string"}
+            },
+            "dependencies": {
+              "type": "array",
+              "items": {"type": "string"}
+            },
+            "null_ok": {"type": "boolean"},
+            "sensitivity": {"type": "string"},
+            "provenance": {"type": "object"},
+            "version": {"type": "string"}
+          }
+        }
+      }
+    }
+  }
+}

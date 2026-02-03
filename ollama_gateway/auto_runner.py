@@ -62,7 +62,19 @@ if __name__ == "__main__":
     parser.add_argument(
         "--post", action="store_true", help="POST snapshot to engine endpoint"
     )
+    parser.add_argument(
+        "--max-items",
+        type=int,
+        default=None,
+        help="Override OLLAMA_MAX_ITEMS for this run (send only N due events)",
+    )
     args = parser.parse_args()
+
+    # Optional per-run cap for fast tests.
+    if args.max_items is not None:
+        import os
+
+        os.environ["OLLAMA_MAX_ITEMS"] = str(args.max_items)
 
     if args.loop:
         run_loop(interval=args.interval, outbox_post=args.post)

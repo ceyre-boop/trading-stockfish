@@ -27,11 +27,15 @@ TRADED_ASSETS = [
 ENGINE_ENDPOINT = os.getenv("OLLAMA_ENGINE_ENDPOINT", "")
 
 OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11434")
-OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "news-parser")
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "mistral:latest")
 OLLAMA_TIMEOUT = float(os.getenv("OLLAMA_TIMEOUT", "20"))
 # Health check endpoint and timeout guard the connectivity proof step.
 OLLAMA_HEALTH_ENDPOINT = os.getenv("OLLAMA_HEALTH_ENDPOINT", f"{OLLAMA_HOST}/api/tags")
 OLLAMA_HEALTH_TIMEOUT = float(os.getenv("OLLAMA_HEALTH_TIMEOUT", "5"))
+# Limit how many due events get sent per run (helps fast testing).
+OLLAMA_MAX_ITEMS = int(os.getenv("OLLAMA_MAX_ITEMS", "5"))  # 0 means no limit
+# Trim oversized full_text payloads before sending to Ollama (protects small models).
+OLLAMA_MAX_CHARS = int(os.getenv("OLLAMA_MAX_CHARS", "8000"))  # 0 means no limit
 
 CONFIDENCE_FALLBACK = float(os.getenv("OLLAMA_CONFIDENCE_FALLBACK", "0.5"))
 

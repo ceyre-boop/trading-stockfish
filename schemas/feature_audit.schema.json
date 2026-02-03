@@ -1,0 +1,58 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://trading-stockfish/schemas/feature_audit.schema.json",
+  "title": "Feature Audit",
+  "description": "Feature audit artifact schema v1.0.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "timestamp_utc", "issues"],
+  "properties": {
+    "version": {"type": "string", "enum": ["1.0.0"]},
+    "run_id": {"type": "string"},
+    "experiment_id": {"type": "string"},
+    "timestamp_utc": {"type": "string", "format": "date-time"},
+    "registry_version": {"type": "string"},
+    "engine_version": {"type": "string"},
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "features_total": {"type": "integer", "minimum": 0},
+        "issues_total": {"type": "integer", "minimum": 0},
+        "issues_by_type": {
+          "type": "object",
+          "additionalProperties": {"type": "integer", "minimum": 0}
+        }
+      }
+    },
+    "issues": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["feature", "issue"],
+        "properties": {
+          "feature": {"type": "string"},
+          "issue": {
+            "type": "string",
+            "enum": [
+              "missing_alias",
+              "constraint_violation",
+              "type_mismatch",
+              "missing_value"
+            ]
+          },
+          "message": {"type": "string"},
+          "path": {"type": "string"},
+          "value": {},
+          "allowed": {"type": "array", "items": {}},
+          "expected_dtype": {"type": "string"},
+          "observed_dtype": {"type": "string"},
+          "stats": {"type": "object"}
+        }
+      }
+    },
+    "snapshot": {"type": "object"},
+    "params": {"type": "object"}
+  }
+}

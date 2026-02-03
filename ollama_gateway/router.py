@@ -8,11 +8,16 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List
 
 import requests
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 from economic_calendar.future_events import get_future_events
 from ollama_gateway import config, validator

@@ -82,6 +82,16 @@ python analytics/run_elo_evaluation.py --symbol USDJPY --days 100 --verbose
 python analytics/run_elo_evaluation.py --symbol EURUSD --days 100 --output results.json
 ```
 
+**Apply policy overlay with causal eval (real data):**
+```bash
+python analytics/run_elo_evaluation.py \
+  --real-data --data-path data/EURUSD_daily.csv \
+  --symbol EURUSD --timeframe 1h \
+  --causal-eval --policy-path logs/policy/policy_config_20260131.json
+```
+
+Tip: `engine.policy_loader.get_default_policy_path(run_id)` builds a deterministic path under `logs/policy/` when you want to stamp policy artifacts per run.
+
 **Combined options:**
 ```bash
 python analytics/run_elo_evaluation.py \

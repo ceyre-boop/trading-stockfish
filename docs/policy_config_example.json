@@ -1,0 +1,43 @@
+{
+  "version": "0.3.0",
+  "run_id": "demo_run",
+  "experiment_id": "exp_macro_v3",
+  "timestamp_utc": "2026-02-02T12:00:00Z",
+  "registry_version": "0.3.0",
+  "engine_version": null,
+  "base_weights": {
+    "macro_pressure": 1.0,
+    "macro_bias_num": 0.8,
+    "rsi_14": 0.6,
+    "growth_event_flag": 0.7
+  },
+  "trust": {
+    "macro_pressure": 0.9,
+    "macro_bias_num": 0.8,
+    "rsi_14": 0.7,
+    "growth_event_flag": 0.6
+  },
+  "regime_multipliers": {
+    "HIGH_VOL": {
+      "macro_pressure": 1.5,
+      "macro_bias_num": 1.3,
+      "rsi_14": 0.5
+    },
+    "LOW_VOL": {
+      "macro_pressure": 0.7,
+      "macro_bias_num": 0.8,
+      "rsi_14": 1.2
+    },
+    "MACRO_ON": {
+      "macro_pressure": 1.8,
+      "growth_event_flag": 1.4
+    },
+    "MACRO_OFF": {
+      "macro_pressure": 0.4
+    }
+  },
+  "params": {
+    "missing_frac_threshold": 0.5,
+    "low_variance_epsilon": 1e-6
+  }
+}

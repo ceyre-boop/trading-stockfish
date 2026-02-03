@@ -1,0 +1,43 @@
+{
+  "run_id": "demo_run_20260131",
+  "experiment_id": "exp_macro_v2",
+  "timestamp_utc": "2026-01-31T12:34:56Z",
+  "registry_version": "0.2.0",
+  "summary": {
+    "missing_alias": 0,
+    "missing_value": 1,
+    "type_mismatch": 0,
+    "constraint_violation": 1
+  },
+  "issues": [
+    {
+      "feature": "growth_event_flag",
+      "alias": "event_type",
+      "issue": "constraint_violation",
+      "segment": null,
+      "role": ["eval"],
+      "tags": ["macro", "ontology"],
+      "value": "Retail Sales",
+      "allowed": ["GDP", "PMI", "ISM"],
+      "detail": null
+    },
+    {
+      "feature": "news_directional_bias",
+      "alias": "news.directional_bias",
+      "issue": "missing_value",
+      "segment": "directional_bias",
+      "role": ["ml", "eval"],
+      "tags": ["news", "macro"],
+      "value": null,
+      "allowed": [],
+      "detail": "Value absent in snapshot"
+    }
+  ],
+  "features_snapshot": {
+    "growth_event_flag": false,
+    "macro_pressure_score": 0.48,
+    "news_directional_bias": 0.0,
+    "rsi_value": 54.2,
+    "volatility_state.vol_regime": "NORMAL"
+  }
+}

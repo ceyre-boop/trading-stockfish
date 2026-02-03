@@ -18,6 +18,23 @@ python analytics/run_elo_evaluation.py \
   --verbose
 ```
 
+### Apply a policy overlay (causal eval)
+
+```bash
+python analytics/run_elo_evaluation.py \
+  --real-data \
+  --data-path data/ES_1m.csv \
+  --symbol ES \
+  --timeframe 1m \
+  --start 2020-01-01 \
+  --end 2024-01-01 \
+  --causal-eval \
+  --policy-path logs/policy/policy_config_20260131.json \
+  --verbose
+```
+
+Use `engine.policy_loader.get_default_policy_path(run_id)` to create a deterministic target path under `logs/policy/` if you need to version policy artifacts per run.
+
 ### Key Features
 
 ✅ **Real OHLCV Data:** Load from CSV/Parquet files  

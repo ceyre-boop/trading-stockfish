@@ -1,0 +1,70 @@
+{
+  "version": "0.2.0",
+  "defaults": {
+    "transform": { "kind": "none", "params": {} },
+    "encoding": { "kind": "none", "params": {} },
+    "live": true,
+    "shape": "scalar",
+    "role": ["eval", "ml"],
+    "constraints": {"min": null, "max": null, "allowed_values": null}
+  },
+  "features": {
+    "macro_pressure": {
+      "type": "float",
+      "source": "news",
+      "description": "Aggregated macro pressure from parsed events near current time.",
+      "tags": ["macro", "risk", "news"],
+      "alias": "macro_pressure_score",
+      "transform": { "kind": "zscore", "params": { "window": 2000 } }
+    },
+
+    "macro_bias_num": {
+      "type": "float",
+      "source": "news",
+      "description": "Net directional macro bias (-1 to +1).",
+      "tags": ["macro", "direction", "news"],
+      "alias": "news_directional_bias"
+    },
+
+    "regime_vol": {
+      "type": "category",
+      "source": "stats",
+      "description": "Volatility regime (LOW_VOL, MID_VOL, HIGH_VOL).",
+      "live": false,
+      "tags": ["regime", "volatility"],
+      "alias": "volatility_state.vol_regime",
+      "encoding": { "kind": "one_hot", "params": {} },
+      "constraints": {
+        "allowed_values": ["LOW_VOL", "NORMAL", "HIGH", "EXTREME"]
+      }
+    },
+
+    "rsi_14": {
+      "type": "float",
+      "source": "indicator",
+      "description": "14-period RSI on primary asset.",
+      "tags": ["indicator", "momentum"],
+      "alias": "rsi_value",
+      "transform": { "kind": "minmax", "params": { "min": 0, "max": 100 } }
+    },
+
+    "growth_event_flag": {
+      "type": "bool",
+      "source": "ontology",
+      "description": "True if current macro event is growth-related.",
+      "tags": ["ontology", "growth", "macro"],
+      "alias": "next_event_type",
+      "constraints": {"allowed_values": ["GDP", "PMI", "ISM", "DURABLE", "GDP_ADV"]}
+    },
+
+    "ml_macro_up_prob": {
+      "type": "float",
+      "source": "ml",
+      "description": "Offline ML probability that macro context favors upside (0-1).",
+      "live": false,
+      "tags": ["ml", "macro", "probability"],
+      "alias": "ml_macro_up_prob",
+      "constraints": { "min": 0.0, "max": 1.0 }
+    }
+  }
+}

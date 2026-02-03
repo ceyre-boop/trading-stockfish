@@ -9,8 +9,9 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import os
 import sqlite3
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, List
 
@@ -66,11 +67,23 @@ def collect_due_items(assets: List[str]) -> List[Dict[str, Any]]:
     _ensure_processed_table(Path(config.RAW_EVENTS_DB))
     processed = _fetch_processed_ids(Path(config.RAW_EVENTS_DB))
     now = datetime.now(tz=timezone.utc)
-    # grab events in horizon and select those due now or in past 30m
+    # Grab events in horizon and treat anything due now or within the next 30 minutes as due.
     future_events = get_future_events(
         assets, db_path=Path(config.RAW_EVENTS_DB), horizon_days=1
     )
-    due_events = [e for e in future_events if _parse_time(e.get("timestamp")) <= now]
+    grace_time = now + timedelta(minutes=30)
+    due_events = [
+        e for e in future_events if _parse_time(e.get("timestamp")) <= grace_time
+    ]
+    max_items = config.OLLAMA_MAX_ITEMS
+    env_override = os.getenv("OLLAMA_MAX_ITEMS")
+    if env_override:
+        try:
+            max_items = int(env_override)
+        except Exception:
+            max_items = config.OLLAMA_MAX_ITEMS
+    if max_items and len(due_events) > max_items:
+        due_events = due_events[:max_items]
     items: List[Dict[str, Any]] = []
     for evt in due_events:
         if evt.get("origin_id") in processed:
@@ -79,6 +92,10 @@ def collect_due_items(assets: List[str]) -> List[Dict[str, Any]]:
         detail_link = evt.get("detail_link", "")
         full_text = (evt.get("full_text", "") or "").strip()
         raw_text = full_text if full_text else summary
+        truncated = False
+        if config.OLLAMA_MAX_CHARS and len(raw_text) > config.OLLAMA_MAX_CHARS:
+            raw_text = raw_text[: config.OLLAMA_MAX_CHARS]
+            truncated = True
         items.append(
             {
                 "raw_text": raw_text,
@@ -94,6 +111,7 @@ def collect_due_items(assets: List[str]) -> List[Dict[str, Any]]:
                     "numeric_extractions": {},
                     "detail_link": detail_link,
                     "full_text_included": bool(full_text),
+                    "truncated": truncated,
                 },
             }
         )
@@ -122,7 +140,11 @@ def parse_and_validate(raw_items: List[Dict[str, Any]]) -> Dict[str, Any]:
                 exc,
             )
             continue
-        impact_val = model_record.get("impact") or model_record.get("impact_level") or metadata.get("impact_level")
+        impact_val = (
+            model_record.get("impact")
+            or model_record.get("impact_level")
+            or metadata.get("impact_level")
+        )
         combined = {
             "source": metadata.get("source", "forex"),
             "origin_id": metadata.get("origin_id", "unknown"),
@@ -130,7 +152,9 @@ def parse_and_validate(raw_items: List[Dict[str, Any]]) -> Dict[str, Any]:
             "asset_scope": metadata.get("asset_scope", []),
             "event_type": metadata.get("event_type", "OTHER"),
             "impact_level": str(impact_val or "MEDIUM").upper(),
-            "directional_bias": str(model_record.get("directional_bias", "NEUTRAL")).upper(),
+            "directional_bias": str(
+                model_record.get("directional_bias", "NEUTRAL")
+            ).upper(),
             "confidence": model_record.get("confidence", 0.0),
             "sentiment_score": 0.0,
             "sentiment_volatility": 0.0,
