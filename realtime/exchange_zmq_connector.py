@@ -23,7 +23,7 @@ import logging
 import json
 import threading
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, Optional, List, Any
 from collections import defaultdict
 from enum import Enum
@@ -92,7 +92,7 @@ class ZeroMQConnector(BaseConnector):
         self.buffer_timeout = 5  # seconds
         
         # Heartbeat
-        self.last_heartbeat = datetime.utcnow()
+        self.last_heartbeat = datetime.now(timezone.utc)
         self.heartbeat_timeout = 30
         
         # Thread management
@@ -143,7 +143,7 @@ class ZeroMQConnector(BaseConnector):
             time.sleep(1)
             
             self.set_status(ConnectorStatus.CONNECTED)
-            self.stats['connected_at'] = datetime.utcnow()
+                self.stats['connected_at'] = datetime.now(timezone.utc)
             logger.info(f"ZMQ: Connected ({self.feed_type.value})")
             
             return True
@@ -209,11 +209,11 @@ class ZeroMQConnector(BaseConnector):
                 
                 # Process message
                 self._process_zmq_message(msg_data)
-                self.last_heartbeat = datetime.utcnow()
+                self.last_heartbeat = datetime.now(timezone.utc)
             
             except self.zmq.error.Again:
                 # Timeout - check connection
-                if (datetime.utcnow() - self.last_heartbeat).total_seconds() > self.heartbeat_timeout:
+                if (datetime.now(timezone.utc) - self.last_heartbeat).total_seconds() > self.heartbeat_timeout:
                     logger.warning("ZMQ: Heartbeat timeout")
                     self.set_status(ConnectorStatus.RECONNECTING)
                     self.disconnect()
@@ -296,9 +296,9 @@ class ZeroMQConnector(BaseConnector):
                 try:
                     timestamp = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
                 except:
-                    timestamp = datetime.utcnow()
+                    timestamp = datetime.now(timezone.utc)
             else:
-                timestamp = datetime.utcnow()
+                timestamp = datetime.now(timezone.utc)
             
             if msg_type == 'ticker':
                 update = self._normalize_ticker(symbol, data, timestamp)

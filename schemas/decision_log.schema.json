@@ -1,0 +1,118 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://trading-stockfish/schemas/decision_log.schema.json",
+  "title": "Decision Log Entry v1.0.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "run_id",
+    "decision_id",
+    "timestamp_utc",
+    "symbol",
+    "timeframe",
+    "session_regime",
+    "macro_regimes",
+    "feature_vector",
+    "effective_weights",
+    "policy_components",
+    "evaluation_score",
+    "action",
+    "provenance"
+  ],
+  "properties": {
+    "run_id": {"type": "string"},
+    "decision_id": {"type": "string"},
+    "timestamp_utc": {"type": "string", "format": "date-time"},
+    "symbol": {"type": "string"},
+    "timeframe": {"type": "string"},
+    "session_regime": {"type": "string"},
+    "macro_regimes": {
+      "type": "array",
+      "items": {"type": "string"}
+    },
+    "feature_vector": {
+      "type": "object",
+      "additionalProperties": {"type": ["number", "null", "boolean", "string"]}
+    },
+    "effective_weights": {
+      "type": "object",
+      "additionalProperties": {"type": "number"}
+    },
+    "policy_components": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "base_weights": {
+          "type": "object",
+          "additionalProperties": {"type": "number"}
+        },
+        "trust": {
+          "type": "object",
+          "additionalProperties": {"type": "number"}
+        },
+        "regime_multipliers": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": {"type": "number"}
+          }
+        }
+      }
+    },
+    "evaluation_score": {"type": "number"},
+    "action": {"type": "string"},
+    "position_size": {"type": "number"},
+    "outcome": {
+      "oneOf": [
+        {"type": "null"},
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "pnl": {"type": ["number", "null"]},
+            "max_drawdown": {"type": ["number", "null"]},
+            "holding_period_bars": {"type": ["integer", "null"]}
+          }
+        }
+      ]
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "policy_version": {"type": "string"},
+        "feature_spec_version": {"type": "string"},
+        "feature_audit_version": {"type": "string"},
+        "engine_version": {"type": "string"}
+      }
+    }
+  },
+  "examples": [
+    {
+      "run_id": "run_20260202_A",
+      "decision_id": "dec_00001",
+      "timestamp_utc": "2026-02-02T12:00:00Z",
+      "symbol": "ES",
+      "timeframe": "M5",
+      "session_regime": "LONDON_NY_OVERLAP",
+      "macro_regimes": ["MACRO_ON", "HIGH_VOL"],
+      "feature_vector": {"session_high": 5025.5, "session_low": 4988.0},
+      "effective_weights": {"session_high": 0.9, "session_low": 1.0},
+      "policy_components": {
+        "base_weights": {"session_high": 1.0, "session_low": 1.0},
+        "trust": {"session_high": 0.9, "session_low": 1.0},
+        "regime_multipliers": {"MACRO_ON": {"session_high": 1.1}}
+      },
+      "evaluation_score": 0.37,
+      "action": "LONG",
+      "position_size": 0.5,
+      "outcome": null,
+      "provenance": {
+        "policy_version": "0.3.0",
+        "feature_spec_version": "1.0.0",
+        "feature_audit_version": "1.0.0",
+        "engine_version": "v4.0"
+      }
+    }
+  ]
+}

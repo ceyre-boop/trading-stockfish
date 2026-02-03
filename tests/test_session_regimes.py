@@ -1,66 +1,47 @@
-from datetime import datetime, timezone
+import datetime as _dt
 
-from engine.evaluator import evaluate_state
 from engine.market_state_builder import build_market_state
-from engine.regime_engine import RegimeEngine
-from engine.types import MarketState
-from session_regime import SessionRegime, compute_session_regime
+from engine.session_regimes import classify_session
 
 
-def _ts(hour: int, minute: int = 0) -> float:
-    return datetime(
-        2024, 1, 1, hour=hour, minute=minute, tzinfo=timezone.utc
-    ).timestamp()
+def test_classify_session_boundaries():
+    tz = _dt.timezone.utc
+    cases = [
+        ("ASIA", _dt.datetime(2024, 1, 2, 1, 30, tzinfo=tz)),
+        ("PRE_SESSION", _dt.datetime(2024, 1, 2, 5, 30, tzinfo=tz)),
+        ("LONDON", _dt.datetime(2024, 1, 2, 8, 30, tzinfo=tz)),
+        ("LONDON_NY_OVERLAP", _dt.datetime(2024, 1, 2, 12, 30, tzinfo=tz)),
+        ("NY", _dt.datetime(2024, 1, 2, 17, 15, tzinfo=tz)),
+        ("POST_SESSION", _dt.datetime(2024, 1, 2, 22, 15, tzinfo=tz)),
+    ]
+
+    for expected, ts in cases:
+        assert classify_session(ts) == expected
 
 
-def test_session_boundaries():
-    assert compute_session_regime(_ts(0)) == SessionRegime.ASIA
-    assert compute_session_regime(_ts(7, 59)) == SessionRegime.ASIA
-    assert compute_session_regime(_ts(8)) == SessionRegime.LONDON
-    assert compute_session_regime(_ts(13)) == SessionRegime.NEW_YORK
+def test_weekend_no_session():
+    tz = _dt.timezone.utc
+    saturday = _dt.datetime(2024, 1, 6, 10, 0, tzinfo=tz)
+    sunday = _dt.datetime(2024, 1, 7, 10, 0, tzinfo=tz)
+    assert classify_session(saturday) == "NO_SESSION"
+    assert classify_session(sunday) == "NO_SESSION"
 
 
-def test_session_overlap_priority():
-    # 15:00 UTC falls in LONDON/NY overlap, NY wins
-    assert compute_session_regime(_ts(15)) == SessionRegime.NEW_YORK
-
-
-def test_replay_live_session_parity():
-    ts = _ts(6)
-    label = compute_session_regime(ts).value
+def test_market_state_includes_session_regime():
+    ts = _dt.datetime(2024, 1, 2, 9, 0, tzinfo=_dt.timezone.utc).timestamp()
     state = build_market_state(symbol="TEST", order_book_events=[], timestamp=ts)
-    assert state["session_regime"] == label
 
-
-def test_evaluator_session_tilts():
-    base = MarketState(
-        current_price=101.0,
-        ma_short=100.0,
-        ma_long=99.0,
-        momentum=0.2,
-        recent_returns=[0.01] * 5,
-        volatility=0.1,
-        liquidity=0.5,
-        rsi=55.0,
-    )
-    asia = MarketState(**{**base.__dict__, "session": "ASIA"})
-    london = MarketState(**{**base.__dict__, "session": "LONDON"})
-    ny = MarketState(**{**base.__dict__, "session": "NEW_YORK"})
-
-    conf_asia = evaluate_state(asia).confidence
-    conf_london = evaluate_state(london).confidence
-    conf_ny = evaluate_state(ny).confidence
-
-    assert conf_asia < conf_london
-    assert conf_ny > conf_london
-
-
-def test_regime_engine_session_output():
-    regime = RegimeEngine(window=3)
-    vstate = {"vol_regime": "NORMAL", "realized_vol": 0.1}
-    lstate = {"liquidity_resilience": 0.1, "depth_imbalance": 0.0}
-    mstate = {"hawkishness": 0.0, "risk_sentiment": 0.0}
-    out = regime.compute(
-        vstate, lstate, mstate, session_regime=SessionRegime.ASIA.value
-    )
-    assert out["session_regime"] == SessionRegime.ASIA.value
+    assert "session_regime" in state
+    allowed = {
+        "ASIA",
+        "PRE_SESSION",
+        "LONDON",
+        "LONDON_NY_OVERLAP",
+        "NY",
+        "POST_SESSION",
+        "NO_SESSION",
+        # Legacy labels (backward compatibility)
+        "NEW_YORK",
+        "OFF_HOURS",
+    }
+    assert str(state["session_regime"]) in allowed

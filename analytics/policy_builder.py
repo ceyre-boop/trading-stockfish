@@ -13,6 +13,11 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from config.feature_registry import load_registry
+from engine.regime_multipliers import (
+    MultiplierConfig,
+    StatsResult,
+    compute_regime_multipliers,
+)
 
 MISSING_FRAC_THRESHOLD = 0.5
 LOW_VARIANCE_EPSILON = 1e-6
@@ -92,8 +97,10 @@ def build_policy(
         "version": "0.3.0",
         "run_id": run_id or stats.get("run_id"),
         "experiment_id": experiment_id or stats.get("experiment_id"),
-        "timestamp_utc": datetime.datetime.utcnow().replace(microsecond=0).isoformat()
-        + "Z",
+        "timestamp_utc": datetime.datetime.now(datetime.timezone.utc)
+        .replace(microsecond=0)
+        .isoformat()
+        .replace("+00:00", "Z"),
         "registry_version": getattr(registry, "version", None),
         "engine_version": stats.get("engine_version"),
         "base_weights": base_weights,
@@ -107,6 +114,159 @@ def build_policy(
     }
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(json.dumps(policy, indent=2, sort_keys=True), encoding="utf-8")
+    return policy
+
+
+def _extract_feature_regime_multipliers(
+    regime_multipliers: Dict[str, Dict[str, float]], feature: str
+) -> Dict[str, float]:
+    feature_mults: Dict[str, float] = {}
+    for regime, fmap in (regime_multipliers or {}).items():
+        if not isinstance(fmap, dict):
+            continue
+        if feature in fmap:
+            try:
+                feature_mults[regime] = float(fmap.get(feature, 1.0))
+            except Exception:
+                feature_mults[regime] = 1.0
+    return feature_mults
+
+
+def _clamp(val: float, low: float, high: float) -> float:
+    return max(low, min(high, val))
+
+
+def build_policy_from_stats(
+    stats: StatsResult,
+    config: Optional[Dict[str, Any]] = None,
+    multiplier_config: Optional[MultiplierConfig] = None,
+) -> Dict[str, Any]:
+    """Build a policy_config dictionary from StatsResult.
+
+    Args:
+        stats: StatsResult containing feature importance, stability, and regime metrics.
+        config: Optional overrides (run_id, experiment_id, registry_path, out_path).
+        multiplier_config: Optional MultiplierConfig to bound multipliers.
+
+    Returns:
+        Dict suitable for serialization to policy_config.json.
+    """
+
+    cfg = config or {}
+    registry_path = cfg.get("registry_path", "config/feature_registry.json")
+    registry = None
+    try:
+        registry = load_registry(registry_path)
+    except Exception:
+        registry = None
+
+    run_id = cfg.get("run_id") or (stats.metadata or {}).get("run_id")
+    experiment_id = cfg.get("experiment_id") or (stats.metadata or {}).get(
+        "experiment_id"
+    )
+    engine_version = (stats.metadata or {}).get("engine_version")
+    registry_version = getattr(registry, "version", None)
+
+    # Base weights from long-horizon importance (normalized for stability)
+    raw_importance: Dict[str, float] = {}
+    for feat, weight in (stats.feature_importance or {}).items():
+        try:
+            raw_importance[str(feat)] = float(weight)
+        except Exception:
+            continue
+
+    base_weights: Dict[str, float] = {}
+    if raw_importance:
+        max_abs = max(abs(v) for v in raw_importance.values()) or 1.0
+        for feat, val in raw_importance.items():
+            base_weights[feat] = val / max_abs
+
+    # Trust from stability metrics (bounded)
+    trust_map: Dict[str, float] = {}
+    for feat, stability in (stats.feature_stability or {}).items():
+        try:
+            trust_map[str(feat)] = _clamp(float(stability), 0.0, 1.0)
+        except Exception:
+            continue
+
+    mcfg = multiplier_config
+    if mcfg is None:
+        candidate_cfg = cfg.get("multiplier_config")
+        if isinstance(candidate_cfg, MultiplierConfig):
+            mcfg = candidate_cfg
+        elif isinstance(candidate_cfg, dict):
+            try:
+                mcfg = MultiplierConfig(**candidate_cfg)
+            except Exception:
+                mcfg = None
+
+    regime_multipliers = compute_regime_multipliers(stats, mcfg)
+
+    # Build per-feature block for compatibility
+    features_policy: Dict[str, Dict[str, Any]] = {}
+    registry_features = set(registry.specs.keys()) if registry else set()
+    feature_names = sorted(
+        set(base_weights.keys()) | set(trust_map.keys()) | registry_features
+    )
+    for name in feature_names:
+        feature_regime_mult = _extract_feature_regime_multipliers(
+            regime_multipliers, name
+        )
+        bw = base_weights.get(name, 1.0)
+        trust_val = trust_map.get(name, 1.0)
+        features_policy[name] = {
+            "trust_score": trust_val,
+            "weight": bw,
+            "regime_multipliers": feature_regime_mult,
+            "reasons": [],
+            "role": (
+                getattr(registry.specs.get(name), "role", [])
+                if registry and name in registry.specs
+                else []
+            ),
+            "tags": (
+                getattr(registry.specs.get(name), "tags", [])
+                if registry and name in registry.specs
+                else []
+            ),
+            "live": (
+                getattr(registry.specs.get(name), "live", True)
+                if registry and name in registry.specs
+                else True
+            ),
+        }
+
+    policy = {
+        "version": "0.3.0",
+        "run_id": run_id,
+        "experiment_id": experiment_id,
+        "timestamp_utc": datetime.datetime.now(datetime.timezone.utc)
+        .replace(microsecond=0)
+        .isoformat()
+        .replace("+00:00", "Z"),
+        "registry_version": registry_version,
+        "engine_version": engine_version,
+        "base_weights": base_weights,
+        "trust": trust_map,
+        "regime_multipliers": regime_multipliers,
+        "features": features_policy,
+        "params": {
+            "source": "stats_feedback_loop",
+            "multiplier_bounds": {
+                "min": (mcfg or MultiplierConfig()).min_multiplier,
+                "max": (mcfg or MultiplierConfig()).max_multiplier,
+            },
+        },
+    }
+
+    out_path = cfg.get("out_path")
+    if out_path:
+        out_path = Path(out_path)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_text(
+            json.dumps(policy, indent=2, sort_keys=True), encoding="utf-8"
+        )
+
     return policy
 
 

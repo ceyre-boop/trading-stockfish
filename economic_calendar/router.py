@@ -9,7 +9,7 @@ own async executor to avoid blocking.
 from __future__ import annotations
 
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict
 
@@ -35,12 +35,17 @@ def _slugify(text: str) -> str:
 def route_event(event: Dict) -> Path:
     impact_folder = _impact_folder(event.get("impact_level", "medium"))
     impact_folder.mkdir(parents=True, exist_ok=True)
-    ts = event.get("timestamp") or datetime.utcnow().isoformat()
+    ts = event.get("timestamp") or datetime.now(timezone.utc).replace(
+        microsecond=0
+    ).isoformat().replace("+00:00", "Z")
     slug = _slugify(event.get("event_type", "event"))
     target = impact_folder / f"{ts}_{slug}.json"
 
     payload = {
-        "routed_at": datetime.utcnow().isoformat(),
+        "routed_at": datetime.now(timezone.utc)
+        .replace(microsecond=0)
+        .isoformat()
+        .replace("+00:00", "Z"),
         "event": event,
     }
 

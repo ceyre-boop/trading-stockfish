@@ -23,6 +23,8 @@ CausalEvaluator Integration:
 """
 
 import logging
+import uuid
+from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import numpy as np
@@ -34,6 +36,7 @@ from .canonical_validator import (
     assert_ml_advisory_only,
     canonical_enforced,
 )
+from .decision_logger import DecisionLogger
 from .evaluator_probabilities import compute_probability_tilts
 from .ml_aux_signals import compute_ml_hints
 
@@ -49,10 +52,15 @@ try:
 except ImportError:
     compute_liquidity_metrics = None
 
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 
 logger = logging.getLogger(__name__)
+
+_DECISION_LOGGER = DecisionLogger(
+    log_path=Path("logs/decision_log.jsonl"),
+    schema_path=Path("schemas/decision_log.schema.json"),
+)
 
 # Integration imports (for causal + policy pipeline)
 try:
@@ -1078,7 +1086,9 @@ def evaluate_with_causal(
                 or (legacy_state or {}).get("session_regime")
                 or (legacy_state or {}).get("session")
             )
-            ctx["session"] = str(session_label or "UNKNOWN")
+            session_str = str(session_label or "UNKNOWN")
+            ctx["session"] = session_str
+            ctx["session_regime"] = session_str
 
             # Prefer explicit session_context->modifiers shape, then flat session_modifiers, then legacy
             sc = getattr(ms, "session_context", None)
@@ -1105,7 +1115,7 @@ def evaluate_with_causal(
             mods = session_ctx.get("modifiers") or {}
             print("\n[SESSION CONTEXT]")
             print(
-                f"  session={session_ctx.get('session', 'UNKNOWN')} | "
+                f"  session_regime={session_ctx.get('session_regime', 'UNKNOWN')} | "
                 f"vol_scale={mods.get('volatility_scale', 1.0):.2f} "
                 f"liq_scale={mods.get('liquidity_scale', 1.0):.2f} "
                 f"trade_scale={mods.get('trade_freq_scale', 1.0):.2f} "
@@ -1157,6 +1167,7 @@ def evaluate_with_causal(
         sorted_factors = sorted(result.scoring_factors, key=lambda f: f.factor_name)
         eval_score = 0.0
         session_mods = session_context.get("modifiers") or {}
+        session_multiplier = float(session_mods.get("risk_scale", 1.0))
         for factor in sorted_factors:
             trust = policy.get_trust(factor.factor_name) if policy else 1.0
             base_weight = policy.get_base_weight(factor.factor_name) if policy else 1.0
@@ -1165,11 +1176,8 @@ def evaluate_with_causal(
                 if policy
                 else 1.0
             )
-            session_multiplier = float(session_mods.get("risk_scale", 1.0))
             policy_effective_weight = (
                 base_weight * trust * regime_multiplier * session_multiplier
-                if policy
-                else 1.0
             )
             combined_weight = factor.weight * policy_effective_weight
             raw_score = factor.score
@@ -1218,13 +1226,14 @@ def evaluate_with_causal(
                 "policy_base_weight": pf.get("policy_base_weight", 1.0),
                 "policy_weight": pf["policy_weight"],
                 "regime_multiplier": pf.get("regime_multiplier", 1.0),
+                "session_multiplier": pf.get("session_multiplier", 1.0),
                 "trust_score": pf["trust_score"],
                 "weighted_score": pf["weighted_score"],
                 "explanation": pf.get("explanation"),
             }
         )
 
-    return {
+    result_payload = {
         "decision": decision,
         "confidence": confidence,
         "reason": reason,
@@ -1238,6 +1247,143 @@ def evaluate_with_causal(
             "factors": factor_explanations,
         },
     }
+
+    try:
+        session_label = session_context.get("session_regime") or session_context.get(
+            "session", "UNKNOWN"
+        )
+        macro_labels: List[str] = []
+        macro_attr = getattr(market_state, "macro_regime", None)
+        if macro_attr:
+            macro_labels.append(str(macro_attr))
+        macro_labels.extend(regimes)
+        macro_labels = [str(m).upper() for m in macro_labels if m]
+        macro_regimes = list(dict.fromkeys(macro_labels))
+
+        # Effective weights keyed by factor name
+        effective_weights = {
+            pf.get("factor"): float(pf.get("policy_weight", 1.0))
+            for pf in policy_factors
+            if pf.get("factor")
+        }
+
+        feature_vector = state.get("features", {}) if isinstance(state, dict) else {}
+
+        # Base policy components (best-effort extraction from PolicyConfig)
+        base_weights = {}
+        trust_map = {}
+        regime_multipliers = {}
+        session_multiplier_val = float(
+            session_context.get("modifiers", {}).get("risk_scale", 1.0)
+        )
+        if policy is not None:
+            base_weights = {
+                k: float(v)
+                for k, v in (getattr(policy, "base_weights", {}) or {}).items()
+                if v is not None
+            }
+            trust_map = {
+                k: float(v)
+                for k, v in (getattr(policy, "trust_map", {}) or {}).items()
+                if v is not None
+            }
+            raw_rm = getattr(policy, "regime_multipliers", {}) or {}
+            regime_multipliers = {
+                rk: {fk: float(fv) for fk, fv in (rv or {}).items() if fv is not None}
+                for rk, rv in raw_rm.items()
+            }
+
+        policy_meta = getattr(policy, "data", {}) if policy is not None else {}
+
+        feature_audit = (
+            state.get("feature_audit", {}) if isinstance(state, dict) else {}
+        )
+
+        provenance = {
+            "policy_version": str(
+                policy_meta.get("version") or getattr(policy, "version", "unknown")
+            ),
+            "feature_spec_version": str(
+                feature_audit.get("registry_version") or "unknown"
+            ),
+            "feature_audit_version": str(
+                feature_audit.get("version")
+                or feature_audit.get("timestamp_utc")
+                or "unknown"
+            ),
+            "engine_version": str(
+                feature_audit.get("engine_version")
+                or policy_meta.get("engine_version")
+                or "unknown"
+            ),
+        }
+
+        # Required identifiers with fallbacks to maintain determinism
+        run_id = "UNKNOWN"
+        if isinstance(state, dict):
+            run_id = str(
+                state.get("run_id")
+                or state.get("experiment_id")
+                or feature_audit.get("run_id")
+                or "UNKNOWN"
+            )
+
+        symbol = "UNKNOWN"
+        if isinstance(state, dict):
+            symbol = str(state.get("symbol") or state.get("market", "UNKNOWN"))
+        timeframe = "UNKNOWN"
+        if isinstance(state, dict):
+            timeframe = str(
+                state.get("timeframe")
+                or state.get("candle_data", {}).get("timeframe")
+                or state.get("candles", {}).get("timeframe")
+                or "UNKNOWN"
+            )
+
+        # Map decision string to LONG/SHORT/FLAT without mutating the decision logic
+        action_map = {"buy": "LONG", "sell": "SHORT"}
+        action_label = action_map.get(str(decision).lower(), "FLAT")
+
+        entry = {
+            "run_id": run_id,
+            "decision_id": str(uuid.uuid4()),
+            "timestamp_utc": datetime.now(timezone.utc)
+            .replace(microsecond=0)
+            .isoformat()
+            .replace("+00:00", "Z"),
+            "symbol": symbol,
+            "timeframe": timeframe,
+            "session_regime": str(session_label or "UNKNOWN"),
+            "macro_regimes": macro_regimes,
+            "feature_vector": feature_vector,
+            "effective_weights": effective_weights,
+            "policy_components": {
+                "base_weights": base_weights,
+                "trust": trust_map,
+                "regime_multipliers": regime_multipliers,
+                "session_multiplier": session_multiplier_val,
+            },
+            "evaluation_score": float(eval_score),
+            "action": action_label,
+            "outcome": None,
+            "provenance": provenance,
+        }
+
+        position_size = None
+        exec_ctx = getattr(market_state, "execution", None) if market_state else None
+        if exec_ctx is not None:
+            position_size = getattr(exec_ctx, "position_size", None)
+        if position_size is not None:
+            try:
+                entry["position_size"] = float(position_size)
+            except Exception:
+                pass
+
+        _DECISION_LOGGER.log_decision(entry)
+    except Exception as exc:  # pragma: no cover - logging must not break decision loop
+        logger.debug("Decision logging skipped: %s", exc)
+
+    return result_payload
 
 
 def create_evaluator_factory(

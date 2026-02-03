@@ -94,5 +94,5 @@ def get_default_policy_path(run_id: Optional[str] = None) -> Path:
         Path to logs/policy/policy_config_<run_id_or_timestamp>.json
     """
 
-    timestamp = run_id or datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+    timestamp = run_id or datetime.now(datetime.timezone.utc).strftime("%Y%m%d_%H%M%S")
     return Path("logs/policy") / f"policy_config_{timestamp}.json"

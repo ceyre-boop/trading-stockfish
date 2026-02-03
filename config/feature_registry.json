@@ -1,5 +1,5 @@
 {
-  "version": "0.2.0",
+  "version": "0.2.1",
   "defaults": {
     "transform": { "kind": "none", "params": {} },
     "encoding": { "kind": "none", "params": {} },
@@ -65,6 +65,31 @@
       "tags": ["ml", "macro", "probability"],
       "alias": "ml_macro_up_prob",
       "constraints": { "min": 0.0, "max": 1.0 }
+    },
+
+    "session_high": {
+      "type": "float",
+      "source": "session",
+      "description": "Highest mid price observed in current session (docs/session_regimes.md).",
+      "tags": ["session", "price", "range"],
+      "alias": "session_high"
+    },
+
+    "session_low": {
+      "type": "float",
+      "source": "session",
+      "description": "Lowest mid price observed in current session (docs/session_regimes.md).",
+      "tags": ["session", "price", "range"],
+      "alias": "session_low"
+    },
+
+    "session_range": {
+      "type": "float",
+      "source": "session",
+      "description": "Intra-session range = session_high - session_low (non-negative).",
+      "tags": ["session", "price", "range"],
+      "alias": "session_range",
+      "constraints": { "min": 0.0, "max": null, "allowed_values": null }
     }
   }
 }

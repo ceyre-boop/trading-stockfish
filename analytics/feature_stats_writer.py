@@ -189,8 +189,10 @@ def write_feature_stats(
     out = {
         "run_id": run_id or latest.get("run_id"),
         "experiment_id": experiment_id or latest.get("experiment_id"),
-        "timestamp_utc": datetime.datetime.utcnow().replace(microsecond=0).isoformat()
-        + "Z",
+        "timestamp_utc": datetime.datetime.now(datetime.timezone.utc)
+        .replace(microsecond=0)
+        .isoformat()
+        .replace("+00:00", "Z"),
         "registry_version": registry_version,
         "engine_version": engine_version,
         "features": metrics,

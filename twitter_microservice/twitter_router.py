@@ -10,7 +10,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict
 
@@ -28,7 +28,14 @@ if not LOGGER.hasHandlers():
 
 def _write_outbox(payload: Dict, outbox: Path) -> Path:
     outbox.mkdir(parents=True, exist_ok=True)
-    fname = f"twitter_{datetime.utcnow().isoformat()}.json"
+    fname = (
+        "twitter_"
+        + datetime.now(timezone.utc)
+        .replace(microsecond=0)
+        .isoformat()
+        .replace("+00:00", "Z")
+        + ".json"
+    )
     target = outbox / fname
     target.write_text(json.dumps(payload, indent=2), encoding="utf-8")
     return target

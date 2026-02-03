@@ -19,6 +19,7 @@ from engine.macro_risk_model import compute_macro_risk_adjustment
 from engine.macro_search_model import compute_search_modulation
 from engine.order_book_model import OrderBookModel
 from engine.order_flow_features import OrderFlowFeatures
+from engine.session_regimes import classify_session
 from engine.trend_structure import compute_trend_structure
 from engine.volatility_utils import compute_atr
 from ict_smc_features import compute_ict_smc_features
@@ -76,6 +77,65 @@ def _session_modifiers(session_label: str) -> Dict[str, float]:
     return base
 
 
+class SessionFeatureTracker:
+    """Tracks per-session high/low/range using session_regime (see docs/session_regimes.md)."""
+
+    def __init__(self) -> None:
+        self.last_session: Optional[str] = None
+        self.session_high: Optional[float] = None
+        self.session_low: Optional[float] = None
+
+    def reset(self, session_label: str, price: float) -> None:
+        self.last_session = session_label
+        self.session_high = float(price)
+        self.session_low = float(price)
+
+    def _metrics(self) -> Dict[str, float]:
+        high = float(self.session_high) if self.session_high is not None else 0.0
+        low = float(self.session_low) if self.session_low is not None else 0.0
+        return {
+            "session_high": high,
+            "session_low": low,
+            "session_range": max(0.0, high - low),
+        }
+
+    def update(self, price: float, session_label: str) -> Dict[str, float]:
+        price_val = float(price if price is not None else 0.0)
+        if (
+            self.last_session != session_label
+            or self.session_high is None
+            or self.session_low is None
+        ):
+            self.reset(session_label, price_val)
+        else:
+            self.session_high = max(self.session_high, price_val)
+            self.session_low = min(self.session_low, price_val)
+        return self._metrics()
+
+    def compute(
+        self,
+        prices: List[float],
+        sessions: List[str],
+        fallback_session: str,
+        fallback_price: float = 0.0,
+    ) -> Dict[str, float]:
+        # Session boundaries follow docs/session_regimes.md windows.
+        if prices and sessions:
+            for price, session_label in zip(prices, sessions):
+                self.update(price, session_label)
+        else:
+            if (
+                self.last_session != fallback_session
+                or self.session_high is None
+                or self.session_low is None
+            ):
+                self.reset(fallback_session, float(fallback_price))
+        return self._metrics()
+
+
+_SESSION_FEATURE_TRACKER = SessionFeatureTracker()
+
+
 class FeatureAudit:
     def __init__(self):
         self.issues: List[Dict[str, Any]] = []
@@ -127,7 +187,7 @@ def get_default_audit_path(
     Priority: explicit run_id > experiment_id > UTC timestamp. A UTC timestamp
     suffix is always added to keep paths collision-free.
     """
-    ts = datetime.datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+    ts = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%d_%H%M%S")
     label = run_id or experiment_id
     if label:
         filename = f"{label}_{ts}.json"
@@ -666,6 +726,12 @@ def build_market_state(
         if session_series
         else compute_session_regime(timestamp or 0.0).value
     )
+    session_features = _SESSION_FEATURE_TRACKER.compute(
+        prices=mid_prices,
+        sessions=session_series,
+        fallback_session=session_label,
+        fallback_price=mid_prices[-1] if mid_prices else 0.0,
+    )
     session_modifiers = _session_modifiers(session_label)
     regime_state = regime_engine.compute(
         volatility_state,
@@ -934,6 +1000,9 @@ def build_market_state(
             "session": session_label,
             "modifiers": session_modifiers,
         },
+        "session_high": session_features["session_high"],
+        "session_low": session_features["session_low"],
+        "session_range": session_features["session_range"],
         "swing_high": trend_struct["swing_high"],
         "swing_low": trend_struct["swing_low"],
         "swing_structure": trend_struct["swing_structure"],
@@ -982,8 +1051,6 @@ def build_market_state(
         "ask_depth": depth_features["ask_depth"],
         "depth_imbalance": depth_features["depth_imbalance"],
         "top_of_book_spread": depth_features["top_of_book_spread"],
-        "session_high": level_features["session_high"],
-        "session_low": level_features["session_low"],
         "day_high": level_features["day_high"],
         "day_low": level_features["day_low"],
         "previous_day_high": level_features["previous_day_high"],
@@ -1155,6 +1222,12 @@ def build_market_state(
         "timestamp": timestamp,
         "health": {"is_stale": False, "errors": []},
     }
+    now_utc = datetime.datetime.now(datetime.UTC).replace(microsecond=0)
+    session_regime_v2 = classify_session(now_utc)
+    state["timestamp_utc"] = now_utc.isoformat().replace("+00:00", "Z")
+    state["session_regime_v2"] = session_regime_v2
+    state["session_context"]["session_v2"] = session_regime_v2
+
     state.update(mtf_features)
     # Registry-driven feature extraction for downstream consumers, with audit log.
     features, audit = _build_feature_vector(state)
@@ -1165,12 +1238,10 @@ def build_market_state(
         {
             "run_id": run_id,
             "experiment_id": experiment_id,
-            "timestamp_utc": datetime.datetime.now(datetime.UTC)
-            .replace(microsecond=0)
-            .isoformat()
-            .replace("+00:00", "Z"),
+            "timestamp_utc": state["timestamp_utc"],
             "registry_version": getattr(FEATURE_REGISTRY, "version", None),
             "engine_version": None,
+            "session_regime_v2": session_regime_v2,
         }
     )
     if include_feature_snapshot:
