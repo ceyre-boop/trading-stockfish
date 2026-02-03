@@ -1165,10 +1165,10 @@ def build_market_state(
         {
             "run_id": run_id,
             "experiment_id": experiment_id,
-            "timestamp_utc": datetime.datetime.utcnow()
+            "timestamp_utc": datetime.datetime.now(datetime.UTC)
             .replace(microsecond=0)
             .isoformat()
-            + "Z",
+            .replace("+00:00", "Z"),
             "registry_version": getattr(FEATURE_REGISTRY, "version", None),
             "engine_version": None,
         }
