@@ -3,7 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import shutil
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Dict, Optional, Tuple
 
@@ -25,7 +25,7 @@ def _resolve_window(
     args: argparse.Namespace,
 ) -> Tuple[Optional[date], Optional[date], str]:
     if args.days:
-        end = datetime.utcnow().date()
+        end = datetime.now(timezone.utc).date()
         start = end - timedelta(days=max(0, args.days - 1))
         return start, end, f"last_{args.days}_days"
     if args.from_date:
@@ -103,7 +103,7 @@ def _write_promoted_metadata(
                 "start_date": start.isoformat() if start else None,
                 "end_date": end.isoformat() if end else None,
             },
-            "timestamp_utc": datetime.utcnow().replace(microsecond=0).isoformat() + "Z",
+            "timestamp_utc": datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
             "promoted": promoted,
             "version_tag": version_tag,
         }

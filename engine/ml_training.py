@@ -94,12 +94,12 @@ def _one_hot(values: pd.Series, prefix: str) -> pd.DataFrame:
 
 def _multi_hot(series: pd.Series, prefix: str) -> pd.DataFrame:
     rows: List[Dict[str, int]] = []
-    for entry in series.fillna([]):
+    for entry in series:
         row: Dict[str, int] = {}
-        if isinstance(entry, list):
-            for val in entry:
-                key = f"{prefix}_{val}"
-                row[key] = 1
+        values = entry if isinstance(entry, list) else []
+        for val in values:
+            key = f"{prefix}_{val}"
+            row[key] = 1
         rows.append(row)
     return pd.DataFrame(rows).fillna(0).astype(int)
 

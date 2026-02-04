@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import math
 from dataclasses import dataclass
 from datetime import date, datetime
@@ -70,8 +71,17 @@ def _within_range(ts: str, start: Optional[date], end: Optional[date]) -> bool:
 def _load_parquet_files(paths: Iterable[Path]) -> pd.DataFrame:
     frames: List[pd.DataFrame] = []
     for path in paths:
-        if path.exists():
+        if not path.exists():
+            continue
+        try:
+            if path.stat().st_size == 0:
+                continue
             frames.append(pd.read_parquet(path))
+        except Exception:
+            logging.getLogger(__name__).warning(
+                "skipping invalid parquet file", extra={"path": str(path)}
+            )
+            continue
     if not frames:
         return pd.DataFrame()
     return pd.concat(frames, ignore_index=True)
@@ -174,7 +184,15 @@ def load_policies(filter: PolicyFilter) -> pd.DataFrame:
     base = Path("storage/policies/policies.parquet")
     if not base.exists():
         return pd.DataFrame()
-    df = pd.read_parquet(base)
+    try:
+        if base.stat().st_size == 0:
+            return pd.DataFrame()
+        df = pd.read_parquet(base)
+    except Exception:
+        logging.getLogger(__name__).warning(
+            "skipping invalid policies parquet", extra={"path": str(base)}
+        )
+        return pd.DataFrame()
     if df.empty:
         return df
 

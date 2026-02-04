@@ -1,0 +1,35 @@
+{
+  "features_used": [
+    "feature_a",
+    "lag_outcome_hit",
+    "lag_outcome_max_drawdown",
+    "lag_outcome_pnl",
+    "session_SIM_SESSION",
+    "stats_stability_mean",
+    "stats_variance_mean",
+    "tf_M5"
+  ],
+  "metrics": {
+    "train": {
+      "accuracy": 1.0,
+      "auc": 0.5,
+      "brier": 0.0001032609268458468,
+      "count": 1
+    },
+    "val": {
+      "accuracy": 0.0,
+      "auc": 0.5,
+      "brier": 0.0,
+      "count": 0
+    }
+  },
+  "model_name": "macro_up_prob",
+  "promoted": false,
+  "timestamp_utc": "2026-02-03T23:59:44Z",
+  "training_window": {
+    "end_date": "2026-02-03",
+    "start_date": "2026-01-28"
+  },
+  "version": "0.1.0",
+  "version_tag": "last_7_days"
+}

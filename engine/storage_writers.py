@@ -10,6 +10,7 @@ on stable keys.
 from __future__ import annotations
 
 import json
+import logging
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -98,7 +99,15 @@ def _write_parquet(df: pd.DataFrame, path: Path, engine: str) -> None:
 def _load_parquet(path: Path, engine: str) -> pd.DataFrame:
     if not path.exists():
         return pd.DataFrame()
-    return pd.read_parquet(path, engine=engine)
+    try:
+        if path.stat().st_size == 0:
+            return pd.DataFrame()
+        return pd.read_parquet(path, engine=engine)
+    except Exception:
+        logging.getLogger(__name__).warning(
+            "skipping invalid parquet file", extra={"path": str(path)}
+        )
+        return pd.DataFrame()
 
 
 # -------------------------- transformations --------------------------
@@ -134,6 +143,7 @@ def _audit_rows_from_obj(
     obj: Dict[str, Any], audit_id_fallback: str
 ) -> List[Dict[str, Any]]:
     rows: List[Dict[str, Any]] = []
+    metadata = obj.get("metadata") or None
     issues = obj.get("issues") if isinstance(obj.get("issues"), list) else [None]
     for issue in issues:
         issue_dict = issue if isinstance(issue, dict) else {}
@@ -163,7 +173,27 @@ def _audit_rows_from_obj(
                 or obj.get("provenance", {}).get("policy_version"),
                 "engine_version": obj.get("engine_version")
                 or obj.get("provenance", {}).get("engine_version"),
-                "metadata": obj.get("metadata", {}),
+                "metadata": metadata,
+            }
+        )
+    # Emit a placeholder row when no issues are present so clean runs are still recorded.
+    if not rows:
+        rows.append(
+            {
+                "run_id": obj.get("run_id"),
+                "audit_id": obj.get("audit_id") or audit_id_fallback,
+                "timestamp_utc": obj.get("timestamp_utc"),
+                "feature_name": None,
+                "raw_value": None,
+                "normalized_value": None,
+                "session_regime": obj.get("session_regime"),
+                "macro_regimes": obj.get("macro_regimes") or [],
+                "issues": [],
+                "policy_version": obj.get("policy_version")
+                or obj.get("provenance", {}).get("policy_version"),
+                "engine_version": obj.get("engine_version")
+                or obj.get("provenance", {}).get("engine_version"),
+                "metadata": metadata,
             }
         )
     return rows
@@ -174,6 +204,7 @@ def _stats_rows_from_obj(obj: Dict[str, Any]) -> List[Dict[str, Any]]:
     run_id = obj.get("run_id")
     ts = obj.get("timestamp_utc") or obj.get("timestamp")
     perf = obj.get("feature_performance_by_regime") or {}
+    metadata = obj.get("metadata") or None
     # Flatten per feature, per regime metrics if present
     for feature, regimes in perf.items():
         if not isinstance(regimes, dict):
@@ -192,7 +223,7 @@ def _stats_rows_from_obj(obj: Dict[str, Any]) -> List[Dict[str, Any]]:
                     "stability": metrics_dict.get("stability"),
                     "window_start": metrics_dict.get("window_start"),
                     "window_end": metrics_dict.get("window_end"),
-                    "metadata": obj.get("metadata", {}),
+                    "metadata": metadata,
                 }
             )
     # Fallback: if no per-regime block, emit per-feature aggregates if available
@@ -212,7 +243,7 @@ def _stats_rows_from_obj(obj: Dict[str, Any]) -> List[Dict[str, Any]]:
                     "stability": fs.get(feature),
                     "window_start": None,
                     "window_end": None,
-                    "metadata": obj.get("metadata", {}),
+                    "metadata": metadata,
                 }
             )
     return rows
