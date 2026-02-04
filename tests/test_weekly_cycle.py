@@ -16,4 +16,4 @@ def test_weekly_cycle_generates_report_and_does_not_promote_on_FAIL(tmp_path: Pa
         mode_str="SIMULATION", days=2, report_dir=tmp_path, allow_promote=False
     )
     assert result["report_path"].exists()
-    assert result["promo
+    assert result["promoted"] is False

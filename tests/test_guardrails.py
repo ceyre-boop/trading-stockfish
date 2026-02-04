@@ -35,4 +35,4 @@ def test_runtime_limits_enforced():
     )
     assert not ok
     assert "max_daily_loss_exceeded" in issues
-    assert "max_position_excee
+    assert "max_position_exceeded" in issues

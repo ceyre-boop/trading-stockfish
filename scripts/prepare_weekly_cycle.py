@@ -10,6 +10,7 @@ Performs:
 Prints consolidated PASS/FAIL and exits non-zero on any failure.
 Deterministic and non-mutating.
 """
+
 from __future__ import annotations
 
 import subprocess
@@ -28,11 +29,13 @@ def run_cmd(cmd) -> tuple[int, str, str]:
 
 
 def check_clock() -> List[str]:
-    code, out, err = run_cmd([
-        "powershell",
-        "-File",
-        str(PROJECT_ROOT / "scripts" / "check_clock_sync.ps1"),
-    ])
+    code, out, err = run_cmd(
+        [
+            "powershell",
+            "-File",
+            str(PROJECT_ROOT / "scripts" / "check_clock_sync.ps1"),
+        ]
+    )
     errs: List[str] = []
     if code != 0:
         errs.append("clock check script failed")
@@ -42,12 +45,16 @@ def check_clock() -> List[str]:
 
 
 def check_policy() -> List[str]:
-    code, _, _ = run_cmd([sys.executable, str(PROJECT_ROOT / "scripts" / "validate_policy_config.py")])
+    code, _, _ = run_cmd(
+        [sys.executable, str(PROJECT_ROOT / "scripts" / "validate_policy_config.py")]
+    )
     return [] if code == 0 else ["policy validation failed"]
 
 
 def check_connectors() -> List[str]:
-    code, _, _ = run_cmd([sys.executable, str(PROJECT_ROOT / "scripts" / "validate_connectors.py")])
+    code, _, _ = run_cmd(
+        [sys.executable, str(PROJECT_ROOT / "scripts" / "validate_connectors.py")]
+    )
     return [] if code == 0 else ["connector validation failed"]
 
 
@@ -122,12 +129,18 @@ def main() -> None:
         if storage_counts:
             print("Storage counts (day1-day7):")
             for run_id, counts in storage_counts.items():
-                print(f"  {run_id}: decisions={counts['decisions']} audits={counts['audits']} stats={counts['stats']}")
+                print(
+                    f"  {run_id}: decisions={counts['decisions']} audits={counts['audits']} stats={counts['stats']}"
+                )
         sys.exit(1)
 
-    print("PASS: Weekly cycle pre-checks (clock, policy, connectors, storage continuity, SAFE_MODE clear)")
+    print(
+        "PASS: Weekly cycle pre-checks (clock, policy, connectors, storage continuity, SAFE_MODE clear)"
+    )
     for run_id, counts in storage_counts.items():
-        print(f"  {run_id}: decisions={counts['decisions']} audits={counts['audits']} stats={counts['stats']}")
+        print(
+            f"  {run_id}: decisions={counts['decisions']} audits={counts['audits']} stats={counts['stats']}"
+        )
     sys.exit(0)
 
 

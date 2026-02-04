@@ -4,6 +4,7 @@ Executes daily_run for day7 and verifies storage artifacts without overwriting e
 Logs to logs/scheduled/daily_day7_recovery.log and prints PASS/FAIL summary.
 Idempotent: skips execution if all day7 artifacts already exist; fails fast if partial data is present.
 """
+
 from __future__ import annotations
 
 import json
@@ -85,7 +86,9 @@ def main() -> None:
             "error": "partial day7 data present; manual cleanup required before recovery",
         }
         _write_log(payload)
-        print("FAIL: Partial day7 data present; manual cleanup required before recovery")
+        print(
+            "FAIL: Partial day7 data present; manual cleanup required before recovery"
+        )
         for k, v in pre_counts.items():
             print(f" - {k}: {v}")
         sys.exit(1)
@@ -129,7 +132,9 @@ def main() -> None:
         sys.exit(1)
 
     print("PASS: Day7 recovery")
-    print(f"decisions={post_counts['decisions']} audits={post_counts['audits']} stats={post_counts['stats']}")
+    print(
+        f"decisions={post_counts['decisions']} audits={post_counts['audits']} stats={post_counts['stats']}"
+    )
     sys.exit(0)
 
 

@@ -3,6 +3,7 @@
 Validates the active policy_config.json in project root against required fields
 and sanity constraints for PAPER mode. Exits non-zero on failure.
 """
+
 from __future__ import annotations
 
 import json
@@ -15,7 +16,13 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 CONFIG_PATH = PROJECT_ROOT / "policy_config.json"
 SESSION_REGIMES_PATH = PROJECT_ROOT / "docs" / "session_regimes.md"
 
-REQUIRED_FIELDS = {"policy_version", "base_weights", "trust", "regime_multipliers", "metadata"}
+REQUIRED_FIELDS = {
+    "policy_version",
+    "base_weights",
+    "trust",
+    "regime_multipliers",
+    "metadata",
+}
 ALLOWED_FIELDS = REQUIRED_FIELDS | {"safe_mode"}
 TRUST_MIN = 0.0
 TRUST_MAX = 5.0
@@ -78,7 +85,9 @@ def _check_trust(cfg: Dict[str, Any]) -> List[str]:
     return errors
 
 
-def _check_regime_multipliers(cfg: Dict[str, Any], required_regimes: List[str]) -> List[str]:
+def _check_regime_multipliers(
+    cfg: Dict[str, Any], required_regimes: List[str]
+) -> List[str]:
     errors: List[str] = []
     rm = cfg.get("regime_multipliers")
     if not isinstance(rm, dict):
@@ -108,9 +117,15 @@ def _check_metadata(cfg: Dict[str, Any]) -> List[str]:
 def _check_safe_mode(cfg: Dict[str, Any]) -> List[str]:
     errors: List[str] = []
     metadata = cfg.get("metadata") if isinstance(cfg.get("metadata"), dict) else {}
-    safe_mode = cfg.get("safe_mode") if "safe_mode" in cfg else metadata.get("safe_mode") or metadata.get("safe_mode_state")
+    safe_mode = (
+        cfg.get("safe_mode")
+        if "safe_mode" in cfg
+        else metadata.get("safe_mode") or metadata.get("safe_mode_state")
+    )
     if safe_mode is None:
-        errors.append("SAFE_MODE flag/state missing (expected safe_mode or metadata.safe_mode[_state])")
+        errors.append(
+            "SAFE_MODE flag/state missing (expected safe_mode or metadata.safe_mode[_state])"
+        )
         return errors
     if isinstance(safe_mode, bool):
         return errors

@@ -6,7 +6,12 @@ from typing import Dict, List, Optional, Tuple
 from engine.modes import Mode, get_adapter
 
 
-def preflight_check(tests_green: bool, policy_path: Path, safe_mode_state: Optional[str], connectors_healthy: bool) -> Tuple[bool, List[str]]:
+def preflight_check(
+    tests_green: bool,
+    policy_path: Path,
+    safe_mode_state: Optional[str],
+    connectors_healthy: bool,
+) -> Tuple[bool, List[str]]:
     issues: List[str] = []
     if not tests_green:
         issues.append("test_suite_not_green")
@@ -19,7 +24,9 @@ def preflight_check(tests_green: bool, policy_path: Path, safe_mode_state: Optio
     return len(issues) == 0, issues
 
 
-def runtime_limits(pnl_today: float, max_daily_loss: float, position: float, max_position: float) -> Tuple[bool, List[str]]:
+def runtime_limits(
+    pnl_today: float, max_daily_loss: float, position: float, max_position: float
+) -> Tuple[bool, List[str]]:
     issues: List[str] = []
     if pnl_today <= -abs(max_daily_loss):
         issues.append("max_daily_loss_exceeded")

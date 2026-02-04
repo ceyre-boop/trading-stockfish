@@ -6,6 +6,7 @@
 - Ensures no SAFE_MODE mention and no errors.
 - Prints PASS/FAIL summary; exits non-zero on failure.
 """
+
 from __future__ import annotations
 
 import json

@@ -9,6 +9,7 @@ Checks:
 
 Writes summary to logs/scheduled/daily_day5_review.log and exits non-zero on failure.
 """
+
 from __future__ import annotations
 
 import json

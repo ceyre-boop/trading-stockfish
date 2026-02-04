@@ -3,6 +3,7 @@
 Executes daily_run for day6 and verifies storage artifacts without overwriting.
 Logs to logs/scheduled/daily_day6_recovery.log and prints PASS/FAIL summary.
 """
+
 from __future__ import annotations
 
 import json

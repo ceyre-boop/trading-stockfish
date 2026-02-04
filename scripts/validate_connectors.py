@@ -5,6 +5,7 @@ no LIVE endpoints are marked, initialization succeeds, and a heartbeat/status
 call works without errors. Writes log to logs/system/connector_validation_YYYYMMDD.log
 and exits non-zero on any failure.
 """
+
 from __future__ import annotations
 
 import datetime as dt
@@ -46,7 +47,9 @@ def _validate_mode(mode: Mode, logger: Logger) -> List[str]:
     logger.log(f"Validating mode={mode.value}")
     try:
         adapter = get_adapter(mode)
-        logger.log(f"Adapter created: name={adapter.name} live={adapter.live} disabled={adapter.disabled}")
+        logger.log(
+            f"Adapter created: name={adapter.name} live={adapter.live} disabled={adapter.disabled}"
+        )
     except Exception as exc:
         errors.append(f"adapter init failed for {mode.value}: {exc}")
         return errors
@@ -63,7 +66,9 @@ def _validate_mode(mode: Mode, logger: Logger) -> List[str]:
 
     # SAFE_MODE should not block SIM/PAPER init; check disabled flag
     if adapter.disabled:
-        errors.append(f"adapter for {mode.value} is disabled; SAFE_MODE should not block init")
+        errors.append(
+            f"adapter for {mode.value} is disabled; SAFE_MODE should not block init"
+        )
 
     return errors
 

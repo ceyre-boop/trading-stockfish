@@ -11,7 +11,13 @@ from engine.jobs import storage_jobs
 from engine.modes import Mode, resolve_mode
 
 
-def run_weekly_cycle(mode_str: str = "SIMULATION", days: int = 7, report_dir: Path = Path("reports"), allow_promote: bool = False, confirm_live: bool = False) -> Dict[str, object]:
+def run_weekly_cycle(
+    mode_str: str = "SIMULATION",
+    days: int = 7,
+    report_dir: Path = Path("reports"),
+    allow_promote: bool = False,
+    confirm_live: bool = False,
+) -> Dict[str, object]:
     mode = resolve_mode(mode_str)
     if mode == Mode.LIVE and not confirm_live:
         raise ValueError("LIVE mode requires confirm_live=True")
@@ -29,9 +35,15 @@ def run_weekly_cycle(mode_str: str = "SIMULATION", days: int = 7, report_dir: Pa
     report_dir.mkdir(parents=True, exist_ok=True)
     report_path = report_dir / f"weekly_report_{end.isoformat()}.md"
 
-    decisions = research_api.load_decisions(research_api.DecisionsFilter(start_date=start, end_date=end))
-    stats = research_api.load_stats(research_api.StatsFilter(start_date=start, end_date=end))
-    policies = research_api.load_policies(research_api.PolicyFilter(start_date=start, end_date=end))
+    decisions = research_api.load_decisions(
+        research_api.DecisionsFilter(start_date=start, end_date=end)
+    )
+    stats = research_api.load_stats(
+        research_api.StatsFilter(start_date=start, end_date=end)
+    )
+    policies = research_api.load_policies(
+        research_api.PolicyFilter(start_date=start, end_date=end)
+    )
 
     regime_perf = research_api.compute_regime_performance(decisions)
     drift = research_api.compute_feature_drift_over_time(stats)
@@ -62,9 +74,13 @@ def run_weekly_cycle(mode_str: str = "SIMULATION", days: int = 7, report_dir: Pa
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run weekly research cycle")
-    parser.add_argument("--mode", default="SIMULATION", help="SIMULATION | PAPER | LIVE")
+    parser.add_argument(
+        "--mode", default="SIMULATION", help="SIMULATION | PAPER | LIVE"
+    )
     parser.add_argument("--days", type=int, default=7, help="Number of days to include")
-    parser.add_argument("--confirm-live", action="store_true", help="Required for LIVE mode")
+    parser.add_argument(
+        "--confirm-live", action="store_true", help="Required for LIVE mode"
+    )
     args = parser.parse_args()
     run_weekly_cycle(args.mode, args.days, confirm_live=args.confirm_live)
 

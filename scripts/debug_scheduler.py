@@ -3,6 +3,7 @@
 Checks Task Scheduler daily task status (assumes task names contain 'daily').
 Logs to logs/system/scheduler_debug_YYYYMMDD.log.
 """
+
 from __future__ import annotations
 
 import datetime as dt
@@ -18,12 +19,16 @@ LOG_PATH = LOG_DIR / f"scheduler_debug_{dt.datetime.utcnow():%Y%m%d}.log"
 
 
 def run_ps(command: str) -> subprocess.CompletedProcess:
-    return subprocess.run([
-        "powershell",
-        "-NoProfile",
-        "-Command",
-        command,
-    ], capture_output=True, text=True)
+    return subprocess.run(
+        [
+            "powershell",
+            "-NoProfile",
+            "-Command",
+            command,
+        ],
+        capture_output=True,
+        text=True,
+    )
 
 
 def collect_tasks() -> List[str]:
@@ -32,7 +37,11 @@ def collect_tasks() -> List[str]:
     proc = run_ps(cmd)
     if proc.returncode != 0:
         return []
-    return [line.strip() for line in proc.stdout.splitlines() if line.strip() and not line.startswith('TaskName')]
+    return [
+        line.strip()
+        for line in proc.stdout.splitlines()
+        if line.strip() and not line.startswith("TaskName")
+    ]
 
 
 def query_task_details(task_name: str) -> str:

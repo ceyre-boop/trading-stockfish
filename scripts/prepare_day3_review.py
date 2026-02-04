@@ -7,6 +7,7 @@ Runs three checks:
 
 Prints PASS/FAIL summary and exits non-zero on any failure.
 """
+
 from __future__ import annotations
 
 import subprocess
@@ -22,7 +23,9 @@ def run_cmd(cmd, cwd=None):
 
 
 def check_clock() -> list[str]:
-    code, out, err = run_cmd(["powershell", "-File", str(PROJECT_ROOT / "scripts" / "check_clock_sync.ps1")])
+    code, out, err = run_cmd(
+        ["powershell", "-File", str(PROJECT_ROOT / "scripts" / "check_clock_sync.ps1")]
+    )
     errors = []
     if code != 0:
         errors.append("clock check script failed")
@@ -32,7 +35,9 @@ def check_clock() -> list[str]:
 
 
 def check_policy() -> list[str]:
-    code, out, err = run_cmd([sys.executable, str(PROJECT_ROOT / "scripts" / "validate_policy_config.py")])
+    code, out, err = run_cmd(
+        [sys.executable, str(PROJECT_ROOT / "scripts" / "validate_policy_config.py")]
+    )
     errors = []
     if code != 0:
         errors.append("policy validation failed")
@@ -40,7 +45,9 @@ def check_policy() -> list[str]:
 
 
 def check_connectors() -> list[str]:
-    code, out, err = run_cmd([sys.executable, str(PROJECT_ROOT / "scripts" / "validate_connectors.py")])
+    code, out, err = run_cmd(
+        [sys.executable, str(PROJECT_ROOT / "scripts" / "validate_connectors.py")]
+    )
     errors = []
     if code != 0:
         errors.append("connector validation failed")

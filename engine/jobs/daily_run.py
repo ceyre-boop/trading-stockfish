@@ -32,7 +32,13 @@ def _timestamp() -> str:
     )
 
 
-def run_daily(mode_str: str, run_id: str, base_dir: Path = Path("logs"), compute_research_summary: bool = False, confirm_live: bool = False) -> Dict[str, object]:
+def run_daily(
+    mode_str: str,
+    run_id: str,
+    base_dir: Path = Path("logs"),
+    compute_research_summary: bool = False,
+    confirm_live: bool = False,
+) -> Dict[str, object]:
     mode = resolve_mode(mode_str)
     if mode == Mode.LIVE and not confirm_live:
         raise ValueError("LIVE mode requires confirm_live=True")
@@ -118,11 +124,22 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Run daily trading session")
     parser.add_argument("--mode", required=True, help="SIMULATION | PAPER | LIVE")
     parser.add_argument("--run-id", required=True, help="Run identifier")
-    parser.add_argument("--confirm-live", action="store_true", help="Required for LIVE mode")
-    parser.add_argument("--compute-summary", action="store_true", help="Compute lightweight research summary")
+    parser.add_argument(
+        "--confirm-live", action="store_true", help="Required for LIVE mode"
+    )
+    parser.add_argument(
+        "--compute-summary",
+        action="store_true",
+        help="Compute lightweight research summary",
+    )
     args = parser.parse_args()
 
-    run_daily(args.mode, args.run_id, confirm_live=args.confirm_live, compute_research_summary=args.compute_summary)
+    run_daily(
+        args.mode,
+        args.run_id,
+        confirm_live=args.confirm_live,
+        compute_research_summary=args.compute_summary,
+    )
 
 
 if __name__ == "__main__":

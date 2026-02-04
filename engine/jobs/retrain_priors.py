@@ -103,7 +103,10 @@ def _write_promoted_metadata(
                 "start_date": start.isoformat() if start else None,
                 "end_date": end.isoformat() if end else None,
             },
-            "timestamp_utc": datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
+            "timestamp_utc": datetime.now(timezone.utc)
+            .replace(microsecond=0)
+            .isoformat()
+            .replace("+00:00", "Z"),
             "promoted": promoted,
             "version_tag": version_tag,
         }

@@ -9,6 +9,7 @@ Validates:
 
 Writes JSON summary to logs/scheduled/weekly_cycle_review.log and prints PASS/FAIL.
 """
+
 from __future__ import annotations
 
 import json
@@ -33,7 +34,11 @@ def _find_reports_dir() -> Optional[Path]:
 
 
 def _latest_report(path: Path) -> Optional[Path]:
-    files = sorted([p for p in path.glob("**/*") if p.is_file()], key=lambda p: p.stat().st_mtime, reverse=True)
+    files = sorted(
+        [p for p in path.glob("**/*") if p.is_file()],
+        key=lambda p: p.stat().st_mtime,
+        reverse=True,
+    )
     return files[0] if files else None
 
 
