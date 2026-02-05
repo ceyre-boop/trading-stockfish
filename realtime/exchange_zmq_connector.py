@@ -210,6 +210,7 @@ class ZeroMQConnector(BaseConnector):
                 # Process message
                 self._process_zmq_message(msg_data)
                 self.last_heartbeat = datetime.now(timezone.utc)
+                self._record_heartbeat(self.last_heartbeat)
             
             except self.zmq.error.Again:
                 # Timeout - check connection
@@ -465,6 +466,7 @@ class ZeroMQConnector(BaseConnector):
         logger.warning("ZMQ: Connector is read-only (data feeds only)")
         order.status = OrderStatus.REJECTED
         order.rejection_reason = "Read-only connector"
+        self._record_order_rejection()
         return None
     
     def cancel_order(self, order_id: str) -> bool:

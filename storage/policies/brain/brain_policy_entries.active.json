@@ -1,0 +1,19 @@
+{
+  "metadata": {
+    "version_ts": "2026-02-05T00:00:00Z",
+    "source": "Entry Model Universe v1.1 Step 5"
+  },
+  "policy": [
+    {"entry_model_id": "ENTRY_SWEEP_DISPLACEMENT_REVERSAL", "label": "PREFERRED"},
+    {"entry_model_id": "ENTRY_FVG_RESPECT_CONTINUATION", "label": "ALLOWED"},
+    {"entry_model_id": "ENTRY_OB_CONTINUATION", "label": "ALLOWED"},
+    {"entry_model_id": "ENTRY_SWEEP_CONTINUATION", "label": "DISABLED"},
+    {"entry_model_id": "ENTRY_FVG_DISRESPECT_REVERSAL", "label": "DISABLED"},
+    {"entry_model_id": "ENTRY_IFVG_REVERSAL", "label": "DISABLED"},
+    {"entry_model_id": "ENTRY_OB_REVERSAL", "label": "DISABLED"},
+    {"entry_model_id": "ENTRY_BREAKER_FLIP", "label": "DISABLED"},
+    {"entry_model_id": "ENTRY_MITIGATION_BLOCK", "label": "DISABLED"},
+    {"entry_model_id": "ENTRY_TREND_PULLBACK", "label": "DISABLED"},
+    {"entry_model_id": "ENTRY_MEAN_REVERSION_RANGE_EXTREME", "label": "DISABLED"}
+  ]
+}

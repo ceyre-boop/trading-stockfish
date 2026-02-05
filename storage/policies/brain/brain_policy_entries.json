@@ -1,0 +1,28 @@
+{
+  "metadata": {
+    "model_types": {
+      "classifier": "object",
+      "regressor": "object"
+    },
+    "thresholds": {
+      "expected_reward_min": 0.0,
+      "min_samples": 5,
+      "output_dir": "storage\\policies\\brain",
+      "prob_good_min": 0.4
+    },
+    "training_metadata": {},
+    "version_ts": "2026-02-05T00:09:32.326187+00:00"
+  },
+  "policy": [
+    {
+      "entry_model_id": "E1",
+      "expected_reward": 0.5,
+      "label": "PREFERRED",
+      "liquidity_bias_side": "UP",
+      "market_profile_state": "DISTRIBUTION",
+      "prob_good": 0.7,
+      "sample_size": 20,
+      "session_profile": "PROFILE_1C"
+    }
+  ]
+}

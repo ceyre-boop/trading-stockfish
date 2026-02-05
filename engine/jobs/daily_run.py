@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
+import sys
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
@@ -10,6 +12,9 @@ from typing import Dict, Optional
 from engine import research_api
 from engine.jobs import storage_jobs
 from engine.modes import Mode, get_adapter, resolve_mode
+from engine.preflight import LOG_DIR, PreflightResult, run_preflight
+
+logger = logging.getLogger(__name__)
 
 
 @contextmanager
@@ -32,16 +37,56 @@ def _timestamp() -> str:
     )
 
 
+def _write_preflight_block(result: PreflightResult) -> Path:
+    blocked_at = datetime.now(timezone.utc)
+    payload = {
+        "message": "LIVE mode blocked by pre-flight failure",
+        "mode": Mode.LIVE.value,
+        "blocked_at": blocked_at.isoformat().replace("+00:00", "Z"),
+        "preflight_timestamp": result.timestamp.isoformat(),
+        "failures": result.failures,
+        "passed": result.passed,
+    }
+    LOG_DIR.mkdir(parents=True, exist_ok=True)
+    block_path = LOG_DIR / f"preflight_block_{blocked_at:%Y%m%d_%H%M%S}.json"
+    block_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    return block_path
+
+
+def _enforce_live_preflight(skip_preflight: bool) -> None:
+    if skip_preflight:
+        print("--skip-preflight is forbidden in LIVE mode")
+        sys.exit(1)
+
+    result = run_preflight(Mode.LIVE)
+    if not result.passed:
+        block_path = _write_preflight_block(result)
+        failure_summary = ", ".join(result.failures)
+        logger.error("LIVE mode blocked by pre-flight failure: %s", failure_summary)
+        print("LIVE mode blocked by pre-flight failure")
+        print(f"Failures: {failure_summary}")
+        print(f"Details: {block_path}")
+        sys.exit(1)
+
+    logger.info("Pre-flight PASS — LIVE mode authorized")
+
+
 def run_daily(
     mode_str: str,
     run_id: str,
     base_dir: Path = Path("logs"),
     compute_research_summary: bool = False,
     confirm_live: bool = False,
+    skip_preflight: bool = False,
 ) -> Dict[str, object]:
     mode = resolve_mode(mode_str)
     if mode == Mode.LIVE and not confirm_live:
         raise ValueError("LIVE mode requires confirm_live=True")
+
+    if mode == Mode.LIVE:
+        _enforce_live_preflight(skip_preflight)
+    elif skip_preflight:
+        logger.info("Pre-flight skipped for non-LIVE mode %s", mode.value)
 
     adapter = get_adapter(mode)
 
@@ -128,6 +173,11 @@ def main() -> None:
         "--confirm-live", action="store_true", help="Required for LIVE mode"
     )
     parser.add_argument(
+        "--skip-preflight",
+        action="store_true",
+        help="Skip pre-flight (SIMULATION/PAPER only)",
+    )
+    parser.add_argument(
         "--compute-summary",
         action="store_true",
         help="Compute lightweight research summary",
@@ -139,6 +189,7 @@ def main() -> None:
         args.run_id,
         confirm_live=args.confirm_live,
         compute_research_summary=args.compute_summary,
+        skip_preflight=args.skip_preflight,
     )
 
 

@@ -15,7 +15,7 @@ Date: January 19, 2026
 
 import logging
 from abc import ABC, abstractmethod
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Dict, List, Optional, Set
 
@@ -183,6 +183,7 @@ class BaseConnector(ABC):
         # Status
         self._status = ConnectorStatus.DISCONNECTED
         self.is_connected = False
+        self.health_monitor = None
 
         # Subscriptions
         self.subscribed_symbols: Set[str] = set()
@@ -313,11 +314,14 @@ class BaseConnector(ABC):
     def push_update(self, update: MarketUpdate):
         """Push normalized market update to router."""
         try:
-            self.stats["last_update_time"] = datetime.now(datetime.timezone.utc)
+            self.stats["last_update_time"] = datetime.now(timezone.utc)
 
             # Route to DataFeedRouter if available
             if self.router:
                 self.router.route_update(update)
+
+            self._record_market_data_timestamp(update.timestamp)
+            self._record_heartbeat(update.timestamp)
 
             # Track by type
             if "price" in update.data_type.value:
@@ -372,3 +376,32 @@ class BaseConnector(ABC):
         self.stats["reconnection_attempts"] += 1
         self.set_status(ConnectorStatus.ERROR)
         logger.error(f"{self.name}: Connection error: {str(error)}")
+
+    # ========================================================================
+    # Health monitor hooks (no-op when not configured)
+    # ========================================================================
+
+    def _record_heartbeat(self, ts: Optional[datetime] = None) -> None:
+        monitor = getattr(self, "health_monitor", None)
+        if monitor:
+            monitor.record_heartbeat(self.name, ts or datetime.now(timezone.utc))
+
+    def _record_latency(self, latency_ms: float) -> None:
+        monitor = getattr(self, "health_monitor", None)
+        if monitor:
+            monitor.record_latency(self.name, float(latency_ms))
+
+    def _record_send_failure(self) -> None:
+        monitor = getattr(self, "health_monitor", None)
+        if monitor:
+            monitor.record_send_failure(self.name)
+
+    def _record_order_rejection(self) -> None:
+        monitor = getattr(self, "health_monitor", None)
+        if monitor:
+            monitor.record_order_rejection(self.name)
+
+    def _record_market_data_timestamp(self, ts: Optional[datetime]) -> None:
+        monitor = getattr(self, "health_monitor", None)
+        if monitor and ts:
+            monitor.record_market_data_timestamp(self.name, ts)

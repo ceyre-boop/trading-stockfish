@@ -1,0 +1,25 @@
+{
+  "metadata": {
+    "timestamp": "2026-02-05T00:20:40.562362+00:00",
+    "source_window": {
+      "start": null,
+      "end": null
+    },
+    "thresholds": null
+  },
+  "diff": [
+    {
+      "entry_model_id": "ENTRY_OB_CONTINUATION",
+      "market_profile_state": "ACCUMULATION",
+      "session_profile": "PROFILE_1A",
+      "liquidity_bias_side": "UP",
+      "from_label": "ALLOWED",
+      "to_label": "PREFERRED",
+      "reason": "high_expected_R",
+      "winrate": NaN,
+      "mean_expected_R": NaN,
+      "mean_regret": NaN,
+      "sample_size": NaN
+    }
+  ]
+}

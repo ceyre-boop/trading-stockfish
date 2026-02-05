@@ -1,5 +1,8 @@
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
+
+if TYPE_CHECKING:
+    from engine.condition_encoder import ConditionVector
 
 
 @dataclass
@@ -304,6 +307,17 @@ class EvaluationOutput:
     macro_regime: str
     risk_flags: List[str] = field(default_factory=list)
     veto_flags: List[str] = field(default_factory=list)
+    # Phase 12 scaffolding (strategy vocabulary only; no behavior change)
+    strategy_id: str = ""
+    entry_model_id: str = ""
+    exit_model_id: str = ""
+    # Phase 12 scaffolding (condition space only; no behavior change)
+    condition_vector: Optional["ConditionVector"] = None
+    # Phase 12 brain influence metadata
+    brain_influence_applied: bool = False
+    brain_adjusted_score: Optional[float] = None
+    # Phase 13 decision frame payload (structure_brain snapshots)
+    decision_frame: Optional[Any] = None
 
 
 @dataclass

@@ -1,8 +1,12 @@
 from __future__ import annotations
 
 import enum
+import logging
 from dataclasses import dataclass, field
-from typing import Dict, Type
+from typing import TYPE_CHECKING, Dict, Type
+
+if TYPE_CHECKING:
+    from engine import guardrails
 
 
 class Mode(enum.Enum):
@@ -26,9 +30,36 @@ class ExecutionAdapter:
     placed_orders: int = 0
     metadata: Dict[str, object] = field(default_factory=dict)
 
-    def place_order(self, *_, **__):
+    def place_order(self, *_, **kwargs):
+        # Guardrails: enforce only in LIVE; log-only in SIM/PAPER.
+        state = kwargs.pop("guardrail_state", {}) or {}
+        metrics = kwargs.pop("guardrail_metrics", {}) or {}
+
+        # Lazy import to avoid circular dependency with guardrails module.
+        from engine import guardrails
+
+        decision = guardrails.check_runtime_limits(state, metrics)
+        if self.live:
+            result = guardrails.apply_guardrail_decision(decision, adapter=self)
+            if decision.triggered:
+                return {
+                    "status": "blocked_by_guardrail",
+                    "guardrail_type": decision.guardrail_type,
+                    "reason": decision.reason,
+                    "safe_mode_required": decision.safe_mode_required,
+                    "result": result,
+                }
+        else:
+            if decision.triggered:
+                logging.getLogger(__name__).info(
+                    "Guardrail would block order in %s: %s",
+                    self.name,
+                    decision.guardrail_type,
+                )
+
         if self.disabled:
             raise RuntimeError("Adapter is disabled")
+
         self.placed_orders += 1
         return {"status": "simulated", "adapter": self.name}
 

@@ -22,12 +22,15 @@ CausalEvaluator Integration:
 - Produces eval_score [-1, +1] + confidence [0, 1]
 """
 
+import json
 import logging
+import os
 import uuid
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import numpy as np
+import pandas as pd
 
 from . import test_flags
 from .abs_balance_controller import BALANCE_CONTROLLER
@@ -36,12 +39,25 @@ from .canonical_validator import (
     assert_ml_advisory_only,
     canonical_enforced,
 )
+from .condition_encoder import encode_conditions
+from .decision_frame import DecisionFrame
 from .decision_logger import DecisionLogger
+from .entry_eligibility import get_eligible_entry_models
 from .evaluator_probabilities import compute_probability_tilts
+from .market_profile_features import MarketProfileFeatures
+from .market_profile_model import TrainedMarketProfileModel
+from .market_profile_state_machine import MarketProfileStateMachine
 from .ml_aux_signals import compute_ml_hints
 
 # Regime engine helpers
 from .regime_engine import compute_regime_bundle
+from .structure_brain import (
+    MarketProfileFrame,
+    SessionProfileFrame,
+    classify_market_profile,
+    classify_session_profile,
+    compute_liquidity_frame,
+)
 
 # Minimal core types (placeholder scaffolding)
 from .types import EvaluationOutput, MarketState
@@ -57,10 +73,693 @@ from enum import Enum
 
 logger = logging.getLogger(__name__)
 
+_BRAIN_POLICY_DEFAULT_PATH = Path("storage/policies/brain/brain_policy.json")
+_ENTRY_BRAIN_POLICY_PATH = Path(
+    "storage/policies/brain/brain_policy_entries.active.json"
+)
+_BRAIN_POLICY_CACHE: Dict[str, pd.DataFrame] = {}
+_ENTRY_BRAIN_POLICY_CACHE: Optional[pd.DataFrame] = None
+_ENTRY_BRAIN_POLICY_CACHE_KEY: Optional[str] = None
+_BRAIN_POLICY_REQUIRED_COLUMNS = [
+    "strategy_id",
+    "entry_model_id",
+    "session",
+    "macro",
+    "vol",
+    "trend",
+    "liquidity",
+    "tod",
+    "prob_good",
+    "expected_reward",
+    "sample_size",
+    "label",
+]
+
+_BRAIN_DEFAULT_CFG: Dict[str, Any] = {
+    "enabled": True,
+    "preferred_boost": 1.2,
+    "discouraged_penalty": 0.5,
+    "min_sample_size": 20,
+    "min_prob_good": 0.55,
+    "min_expected_reward": 0.0,
+}
+
 _DECISION_LOGGER = DecisionLogger(
     log_path=Path("logs/decision_log.jsonl"),
     schema_path=Path("schemas/decision_log.schema.json"),
 )
+
+
+def load_brain_policy(path: str | Path) -> pd.DataFrame:
+    """Load a brain policy artifact (JSON or Parquet) with required columns.
+
+    Deterministic, cached on disk path. Returns empty DataFrame on errors.
+    """
+
+    resolved = Path(path)
+    cache_key = str(resolved.resolve()) if resolved.exists() else str(resolved)
+    if cache_key in _BRAIN_POLICY_CACHE:
+        return _BRAIN_POLICY_CACHE[cache_key]
+
+    if not resolved.exists():
+        logger.debug("Brain policy not found at %s", resolved)
+        df = pd.DataFrame(columns=_BRAIN_POLICY_REQUIRED_COLUMNS)
+        _BRAIN_POLICY_CACHE[cache_key] = df
+        return df
+
+    try:
+        if resolved.suffix.lower() in {".parquet", ".pq"}:
+            df = pd.read_parquet(resolved)
+        else:
+            with resolved.open("r", encoding="utf-8") as handle:
+                payload = json.load(handle)
+            if isinstance(payload, dict) and "policy" in payload:
+                df = pd.DataFrame(payload.get("policy") or [])
+            else:
+                df = pd.DataFrame(payload)
+    except Exception as exc:
+        logger.debug("Failed to load brain policy %s: %s", resolved, exc)
+        df = pd.DataFrame(columns=_BRAIN_POLICY_REQUIRED_COLUMNS)
+
+    missing = [c for c in _BRAIN_POLICY_REQUIRED_COLUMNS if c not in df.columns]
+    if missing:
+        logger.debug("Brain policy missing columns %s; ignoring", missing)
+        df = pd.DataFrame(columns=_BRAIN_POLICY_REQUIRED_COLUMNS)
+    else:
+        df = df[_BRAIN_POLICY_REQUIRED_COLUMNS].copy()
+        df = df.sort_values(_BRAIN_POLICY_REQUIRED_COLUMNS[:8]).reset_index(drop=True)
+
+    _BRAIN_POLICY_CACHE[cache_key] = df
+    return df
+
+
+def _get_cached_brain_policy() -> pd.DataFrame:
+    path = os.getenv("BRAIN_POLICY_PATH", str(_BRAIN_POLICY_DEFAULT_PATH))
+    return load_brain_policy(path)
+
+
+def _load_entry_brain_policy() -> pd.DataFrame:
+    global _ENTRY_BRAIN_POLICY_CACHE, _ENTRY_BRAIN_POLICY_CACHE_KEY
+    path = _ENTRY_BRAIN_POLICY_PATH
+
+    target_path = path
+    policy_payload = None
+    if path.exists():
+        try:
+            with path.open("r", encoding="utf-8") as handle:
+                pointer_payload = json.load(handle)
+            if isinstance(pointer_payload, dict) and pointer_payload.get("path"):
+                target_path = Path(pointer_payload.get("path"))
+            else:
+                policy_payload = pointer_payload
+        except Exception:
+            policy_payload = None
+
+    cache_key = f"{path.resolve()}::{target_path.resolve() if target_path else 'none'}"
+    if (
+        _ENTRY_BRAIN_POLICY_CACHE is not None
+        and cache_key == _ENTRY_BRAIN_POLICY_CACHE_KEY
+    ):
+        return _ENTRY_BRAIN_POLICY_CACHE
+
+    df = pd.DataFrame()
+    if (
+        policy_payload is not None
+        and isinstance(policy_payload, dict)
+        and "policy" in policy_payload
+    ):
+        df = pd.DataFrame(policy_payload.get("policy") or [])
+    else:
+        if target_path and target_path.exists():
+            try:
+                with target_path.open("r", encoding="utf-8") as handle:
+                    payload = json.load(handle)
+                policy = payload.get("policy") if isinstance(payload, dict) else payload
+                df = pd.DataFrame(policy or [])
+            except Exception:
+                df = pd.DataFrame()
+
+    if not df.empty:
+        df = df.sort_values(
+            [
+                "entry_model_id",
+                "market_profile_state",
+                "session_profile",
+                "liquidity_bias_side",
+            ]
+        ).reset_index(drop=True)
+    _ENTRY_BRAIN_POLICY_CACHE = df
+    _ENTRY_BRAIN_POLICY_CACHE_KEY = cache_key
+    return _ENTRY_BRAIN_POLICY_CACHE
+
+
+def _load_brain_config() -> Dict[str, Any]:
+    cfg = dict(_BRAIN_DEFAULT_CFG)
+    cfg_path = Path("config/policy_config.json")
+    if cfg_path.exists():
+        try:
+            data = json.loads(cfg_path.read_text(encoding="utf-8"))
+            cfg.update((data.get("brain") or {}))
+        except Exception:
+            logger.debug("Brain config load failed, using defaults", exc_info=True)
+    # Clamp multipliers for safety
+    cfg["preferred_boost"] = float(max(0.0, min(5.0, cfg.get("preferred_boost", 1.2))))
+    cfg["discouraged_penalty"] = float(
+        max(0.0, min(1.0, cfg.get("discouraged_penalty", 0.5)))
+    )
+    return cfg
+
+
+def _safe_mode_active() -> bool:
+    env_flag = str(os.getenv("SAFE_MODE", os.getenv("SAFE_MODE_ACTIVE", ""))).lower()
+    if env_flag in {"1", "true", "on", "yes"}:
+        return True
+    try:
+        marker = Path("logs/safe_mode_state.txt")
+        if marker.exists():
+            content = marker.read_text(encoding="utf-8").strip().upper()
+            if "SAFE_MODE" in content:
+                return True
+    except Exception:
+        pass
+    return False
+
+
+def _condition_vector_to_dict(condition_vector: Any) -> Dict[str, Any]:
+    if condition_vector is None:
+        return {}
+    if hasattr(condition_vector, "__dict__"):
+        try:
+            from dataclasses import asdict
+
+            return asdict(condition_vector)
+        except Exception:
+            return dict(condition_vector.__dict__)
+    if isinstance(condition_vector, dict):
+        return condition_vector
+    return {}
+
+
+def _extract_strategy_ids(
+    state: Optional[Dict], market_state: Optional[Any]
+) -> Tuple[Any, Any]:
+    strategy_id = None
+    entry_model_id = None
+    if market_state is not None:
+        strategy_id = getattr(market_state, "strategy_id", None)
+        entry_model_id = getattr(market_state, "entry_model_id", None)
+    if strategy_id is None and isinstance(state, dict):
+        strategy_id = state.get("strategy_id")
+    if entry_model_id is None and isinstance(state, dict):
+        entry_model_id = state.get("entry_model_id")
+    return strategy_id, entry_model_id
+
+
+def _lookup_brain_recommendation(
+    strategy_id: Any, entry_model_id: Any, condition_vector: Any
+) -> Optional[Dict[str, Any]]:
+    policy_df = _get_cached_brain_policy()
+    if policy_df.empty:
+        return None
+
+    cv = _condition_vector_to_dict(condition_vector)
+    if not cv:
+        return None
+
+    def _v(key: str) -> Any:
+        return cv.get(key)
+
+    mask = (
+        (policy_df["strategy_id"] == strategy_id)
+        & (policy_df["entry_model_id"] == entry_model_id)
+        & (policy_df["session"] == _v("session"))
+        & (policy_df["macro"] == _v("macro"))
+        & (policy_df["vol"] == _v("vol"))
+        & (policy_df["trend"] == _v("trend"))
+        & (policy_df["liquidity"] == _v("liquidity"))
+        & (policy_df["tod"] == _v("tod"))
+    )
+
+    matches = policy_df[mask]
+    if matches.empty:
+        return None
+
+    row = matches.iloc[0]
+    return {
+        "brain_label": row.get("label"),
+        "brain_prob_good": float(row.get("prob_good", 0.0) or 0.0),
+        "brain_expected_reward": float(row.get("expected_reward", 0.0) or 0.0),
+        "brain_sample_size": int(row.get("sample_size", 0) or 0),
+    }
+
+
+def _match_entry_policy(
+    entry_id: str, frame: Optional[DecisionFrame]
+) -> Optional[Dict[str, Any]]:
+    df = _load_entry_brain_policy()
+    if df.empty or not entry_id:
+        return None
+
+    mp_state = (frame.market_profile_state if frame else None) or "UNKNOWN"
+    session_profile = (frame.session_profile if frame else None) or "UNKNOWN"
+    liq_bias = None
+    if frame and isinstance(frame.liquidity_frame, dict):
+        liq_bias = frame.liquidity_frame.get("bias")
+    liq_bias = liq_bias or "UNKNOWN"
+
+    candidates = df[df["entry_model_id"] == entry_id]
+    if candidates.empty:
+        return None
+
+    exact = candidates[
+        (candidates["market_profile_state"] == mp_state)
+        & (candidates["session_profile"] == session_profile)
+        & (candidates["liquidity_bias_side"] == liq_bias)
+    ]
+    if not exact.empty:
+        row = exact.iloc[0]
+    else:
+        row = candidates.iloc[0]
+
+    return {
+        "label": row.get("label"),
+        "prob_good": float(row.get("prob_good", 0.0) or 0.0),
+        "expected_reward": float(row.get("expected_reward", 0.0) or 0.0),
+        "sample_size": int(row.get("sample_size", 0) or 0),
+    }
+
+
+def _attach_entry_brain_shadow(decision_frame: Optional[DecisionFrame]) -> None:
+    if decision_frame is None:
+        return
+    eligible = decision_frame.eligible_entry_models or []
+    if not eligible:
+        return
+
+    labels: Dict[str, Any] = {}
+    scores: Dict[str, Any] = {}
+    for entry_id in eligible:
+        policy_row = _match_entry_policy(entry_id, decision_frame)
+        if policy_row is None:
+            continue
+        labels[entry_id] = policy_row.get("label")
+        scores[entry_id] = {
+            "prob_good": policy_row.get("prob_good"),
+            "expected_reward": policy_row.get("expected_reward"),
+            "sample_size": policy_row.get("sample_size"),
+        }
+        logger.debug(
+            "Shadow tactical brain: entry_id=%s label=%s prob_good=%.3f expected_R=%.3f",
+            entry_id,
+            policy_row.get("label"),
+            float(policy_row.get("prob_good", 0.0) or 0.0),
+            float(policy_row.get("expected_reward", 0.0) or 0.0),
+        )
+
+    if labels:
+        decision_frame.entry_brain_labels = labels
+        decision_frame.entry_brain_scores = scores
+
+
+def _apply_shadow_brain_annotations(
+    strategy_id: Any,
+    entry_model_id: Any,
+    condition_vector: Any,
+    result_payload: Dict[str, Any],
+    entry: Optional[Dict[str, Any]] = None,
+) -> None:
+    brain_info = _lookup_brain_recommendation(
+        strategy_id, entry_model_id, condition_vector
+    )
+    if not brain_info:
+        return
+
+    result_payload.update(brain_info)
+    if entry is not None:
+        entry.update(brain_info)
+
+    logger.debug(
+        "Shadow brain: strategy_id=%s entry_model_id=%s label=%s prob_good=%.4f expected_reward=%.4f sample_size=%s",
+        strategy_id,
+        entry_model_id,
+        brain_info.get("brain_label"),
+        brain_info.get("brain_prob_good", 0.0),
+        brain_info.get("brain_expected_reward", 0.0),
+        brain_info.get("brain_sample_size"),
+    )
+
+
+def _apply_brain_weighting(
+    score: float,
+    brain_info: Optional[Dict[str, Any]],
+    brain_cfg: Dict[str, Any],
+    safe_mode: bool,
+    risk_limit_hit: bool,
+    policy_allowed: bool,
+) -> Tuple[float, bool]:
+    if not brain_cfg.get("enabled", True):
+        return score, False
+    if safe_mode:
+        logger.debug("SAFE_MODE active — brain influence suppressed.")
+        return score, False
+    if risk_limit_hit:
+        logger.debug("Risk limit hit — brain influence suppressed.")
+        return score, False
+    if not policy_allowed:
+        logger.debug("Policy gating disallows strategy — brain influence suppressed.")
+        return score, False
+    if not brain_info:
+        return score, False
+
+    label = (brain_info.get("brain_label") or "").upper()
+    sample_size = int(brain_info.get("brain_sample_size", 0) or 0)
+    prob_good = float(brain_info.get("brain_prob_good", 0.0) or 0.0)
+    expected_reward = float(brain_info.get("brain_expected_reward", 0.0) or 0.0)
+
+    if (
+        sample_size < brain_cfg.get("min_sample_size", 0)
+        or prob_good < brain_cfg.get("min_prob_good", 0.0)
+        or expected_reward < brain_cfg.get("min_expected_reward", 0.0)
+    ):
+        logger.debug(
+            "Brain thresholds not met (sample=%s prob=%.4f reward=%.4f); treated as DISABLED.",
+            sample_size,
+            prob_good,
+            expected_reward,
+        )
+        return 0.0, True
+
+    score_before = score
+    applied = False
+    if label == "DISABLED":
+        score = 0.0
+        applied = True
+        logger.debug("Brain disabled strategy_id: score set to 0.0")
+    elif label == "DISCOURAGED":
+        penalty = brain_cfg.get("discouraged_penalty", 0.5)
+        score *= penalty
+        applied = True
+        logger.debug(
+            "Brain influence: label=DISCOURAGED score_before=%.4f score_after=%.4f penalty=%.3f",
+            score_before,
+            score,
+            penalty,
+        )
+    elif label == "PREFERRED":
+        boost = brain_cfg.get("preferred_boost", 1.0)
+        score *= boost
+        applied = True
+        logger.debug(
+            "Brain influence: label=PREFERRED score_before=%.4f score_after=%.4f boost=%.3f",
+            score_before,
+            score,
+            boost,
+        )
+    else:
+        applied = False
+
+    # Bound score
+    score = float(np.clip(score, -1.0, 1.0))
+    return score, applied
+
+
+def _safe_get(source: Any, key: str, default: Any = None) -> Any:
+    try:
+        if source is None:
+            return default
+        if isinstance(source, dict):
+            return source.get(key, default)
+        return getattr(source, key, default)
+    except Exception:
+        return default
+
+
+def _safe_float(value: Any, default: float = 0.0) -> float:
+    try:
+        return float(value)
+    except Exception:
+        return float(default)
+
+
+def _safe_bool(value: Any) -> bool:
+    return bool(value) if value is not None else False
+
+
+def _enrich_liquidity_dict(liq: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    liq = dict(liq or {})
+    swept = liq.get("swept") or {}
+    if "sweep_state" not in liq:
+        liq["sweep_state"] = (
+            "POST_SWEEP" if any(bool(v) for v in swept.values()) else "NO_SWEEP"
+        )
+    if "distance_bucket" not in liq:
+        distances = liq.get("distances") or {}
+        bucket = "UNKNOWN"
+        if distances:
+            try:
+                finite = [float(v) for v in distances.values() if v is not None]
+                if finite:
+                    min_dist = min(finite)
+                    if min_dist <= 0:
+                        bucket = "INSIDE"
+                    elif min_dist <= 5:
+                        bucket = "NEAR"
+                    else:
+                        bucket = "FAR"
+            except Exception:
+                bucket = "UNKNOWN"
+        liq["distance_bucket"] = bucket
+    if "bias" in liq and liq.get("bias"):
+        liq["bias"] = str(liq.get("bias")).upper()
+    return liq
+
+
+def _derive_entry_signals(
+    decision_frame: DecisionFrame,
+    state: Optional[Dict[str, Any]],
+    market_state: Optional[Any],
+) -> Dict[str, bool]:
+    signals = {
+        "sweep": False,
+        "displacement": False,
+        "fvg": False,
+        "ob": False,
+        "ifvg": False,
+    }
+
+    liq = decision_frame.liquidity_frame or {}
+    swept = liq.get("swept") or {}
+    if any(bool(v) for v in swept.values()):
+        signals["sweep"] = True
+
+    evidence = decision_frame.market_profile_evidence or {}
+    sweeps_ev = evidence.get("sweeps") if isinstance(evidence, dict) else {}
+    if isinstance(sweeps_ev, dict) and any(bool(v) for v in sweeps_ev.values()):
+        signals["sweep"] = True
+
+    displacement_score = None
+    if isinstance(evidence, dict):
+        displacement_score = evidence.get("displacement_score")
+
+    structure_features: Dict[str, Any] = {}
+    if isinstance(state, dict):
+        structure_features = (
+            state.get("structure_features") or state.get("features", {}) or {}
+        )
+    elif hasattr(market_state, "structure_features"):
+        try:
+            structure_features = getattr(market_state, "structure_features") or {}
+        except Exception:
+            structure_features = {}
+
+    displacement_score = (
+        displacement_score
+        if displacement_score is not None
+        else structure_features.get("displacement_score")
+    )
+    signals["displacement"] = bool(
+        displacement_score is not None and displacement_score > 0.4
+    )
+    signals["fvg"] = bool(
+        structure_features.get("fvg_created")
+        or structure_features.get("fvg_present")
+        or structure_features.get("fvg_respected")
+    )
+    signals["ob"] = bool(
+        structure_features.get("ob_created")
+        or structure_features.get("ob_present")
+        or structure_features.get("ob_respected")
+    )
+    signals["ifvg"] = bool(
+        structure_features.get("ifvg_created")
+        or structure_features.get("ifvg_present")
+        or structure_features.get("ifvg_respected")
+    )
+
+    return signals
+
+
+def _build_market_profile_features(
+    market_state: Optional[Any],
+    legacy_state: Optional[Dict[str, Any]],
+    session_context: Optional[Dict[str, Any]],
+) -> Optional[MarketProfileFeatures]:
+    existing = _safe_get(market_state, "market_profile_features") or _safe_get(
+        legacy_state, "market_profile_features"
+    )
+    if isinstance(existing, MarketProfileFeatures):
+        return existing
+
+    features_src = (
+        _safe_get(legacy_state, "structure_features", {})
+        or _safe_get(market_state, "structure_features", {})
+        or _safe_get(legacy_state, "features", {})
+        or {}
+    )
+
+    timestamp_dt = datetime.now(timezone.utc)
+    session_label = str(
+        (session_context or {}).get("session_regime")
+        or (session_context or {}).get("session")
+        or _safe_get(legacy_state, "session_regime")
+        or _safe_get(legacy_state, "session")
+        or "UNKNOWN"
+    )
+    tod_bucket = str(
+        features_src.get("time_of_day_bucket")
+        or _safe_get(legacy_state, "time_of_day_bucket")
+        or "UNKNOWN"
+    )
+
+    def _str_field(key: str, default: str = "NONE") -> str:
+        return str(features_src.get(key, default) or default).upper()
+
+    return MarketProfileFeatures(
+        timestamp_utc=timestamp_dt,
+        session_context=session_label,
+        time_of_day_bucket=tod_bucket,
+        dist_pdh=_safe_float(features_src.get("dist_pdh", 0.0)),
+        dist_pdl=_safe_float(features_src.get("dist_pdl", 0.0)),
+        dist_prev_session_high=_safe_float(
+            features_src.get("dist_prev_session_high", 0.0)
+        ),
+        dist_prev_session_low=_safe_float(
+            features_src.get("dist_prev_session_low", 0.0)
+        ),
+        dist_weekly_high=_safe_float(features_src.get("dist_weekly_high", 0.0)),
+        dist_weekly_low=_safe_float(features_src.get("dist_weekly_low", 0.0)),
+        nearest_draw_side=_str_field("nearest_draw_side", "NONE"),
+        atr=_safe_float(features_src.get("atr", 0.0)),
+        atr_vs_session_baseline=_safe_float(
+            features_src.get("atr_vs_session_baseline", 0.0)
+        ),
+        realized_vol=_safe_float(features_src.get("realized_vol", 0.0)),
+        intraday_range_vs_typical=_safe_float(
+            features_src.get("intraday_range_vs_typical", 0.0)
+        ),
+        trend_slope_htf=_safe_float(features_src.get("trend_slope_htf", 0.0)),
+        trend_dir_htf=_str_field("trend_dir_htf", "FLAT"),
+        trend_slope_ltf=_safe_float(features_src.get("trend_slope_ltf", 0.0)),
+        trend_dir_ltf=_str_field("trend_dir_ltf", "FLAT"),
+        displacement_score=_safe_float(features_src.get("displacement_score", 0.0)),
+        num_impulsive_bars=int(features_src.get("num_impulsive_bars", 0)),
+        swept_pdh=_safe_bool(features_src.get("swept_pdh")),
+        swept_pdl=_safe_bool(features_src.get("swept_pdl")),
+        swept_session_high=_safe_bool(features_src.get("swept_session_high")),
+        swept_session_low=_safe_bool(features_src.get("swept_session_low")),
+        swept_equal_highs=_safe_bool(features_src.get("swept_equal_highs")),
+        swept_equal_lows=_safe_bool(features_src.get("swept_equal_lows")),
+        fvg_created=_safe_bool(features_src.get("fvg_created")),
+        fvg_filled=_safe_bool(features_src.get("fvg_filled")),
+        fvg_respected=_safe_bool(features_src.get("fvg_respected")),
+        ob_created=_safe_bool(features_src.get("ob_created")),
+        ob_respected=_safe_bool(features_src.get("ob_respected")),
+        ob_violated=_safe_bool(features_src.get("ob_violated")),
+        volume_spike=_safe_bool(features_src.get("volume_spike")),
+        volume_vs_mean=_safe_float(features_src.get("volume_vs_mean", 0.0)),
+    )
+
+
+def _extract_liquidity_inputs(
+    legacy_state: Optional[Dict[str, Any]], market_state: Optional[Any]
+) -> Dict[str, Dict[str, Any]]:
+    candidates = [
+        _safe_get(legacy_state, "liquidity_draws"),
+        _safe_get(legacy_state, "draws"),
+        _safe_get(market_state, "liquidity_draws"),
+        _safe_get(market_state, "draws"),
+    ]
+    for cand in candidates:
+        if isinstance(cand, dict):
+            return cand
+    return {}
+
+
+def _build_decision_frame(
+    *,
+    state: Optional[Dict[str, Any]],
+    market_state: Optional[Any],
+    session_context: Dict[str, Any],
+    condition_vector: Any,
+    decision_timestamp: str,
+) -> Optional[DecisionFrame]:
+    try:
+        mp_features = _build_market_profile_features(
+            market_state, state, session_context
+        )
+        ml_model: Optional[TrainedMarketProfileModel] = _safe_get(
+            market_state, "market_profile_model"
+        ) or _safe_get(state, "market_profile_model")
+        state_machine: Optional[MarketProfileStateMachine] = _safe_get(
+            market_state, "market_profile_state_machine"
+        ) or _safe_get(state, "market_profile_state_machine")
+        if state_machine is None:
+            state_machine = MarketProfileStateMachine(thresholds={})
+
+        mp_frame: Optional[MarketProfileFrame] = None
+        if mp_features is not None and ml_model is not None:
+            mp_result = classify_market_profile(mp_features, ml_model, state_machine)
+            mp_frame = MarketProfileFrame(
+                state=mp_result.get("state"),
+                confidence=mp_result.get("confidence"),
+                evidence=mp_result.get("evidence") or {},
+            )
+
+        session_features = (
+            _safe_get(state, "session_profile_features", {})
+            or _safe_get(market_state, "session_profile_features", {})
+            or {}
+        )
+        session_profile_frame: Optional[SessionProfileFrame] = classify_session_profile(
+            session_features
+        )
+
+        liquidity_inputs = _extract_liquidity_inputs(state, market_state)
+        liquidity_frame = compute_liquidity_frame(liquidity_inputs)
+
+        symbol = str(
+            _safe_get(state, "symbol")
+            or _safe_get(market_state, "symbol")
+            or _safe_get(state, "market")
+            or _safe_get(market_state, "market")
+            or "UNKNOWN"
+        )
+
+        frame = DecisionFrame.from_frames(
+            timestamp_utc=decision_timestamp,
+            symbol=symbol,
+            session_context=session_context,
+            condition_vector=_condition_vector_to_dict(condition_vector),
+            market_profile=mp_frame,
+            session_profile=session_profile_frame,
+            liquidity=liquidity_frame,
+        )
+        if frame and isinstance(frame.liquidity_frame, dict):
+            frame.liquidity_frame = _enrich_liquidity_dict(frame.liquidity_frame)
+        return frame
+    except Exception:
+        return None
+
 
 # Integration imports (for causal + policy pipeline)
 try:
@@ -93,6 +792,11 @@ def evaluate_state(state: MarketState) -> EvaluationOutput:
     3) Regime-aware adjustments to score/confidence
     4) Clamp score and derive confidence
     """
+
+    # TODO(phase12): Surface strategy_id/entry_model_id/exit_model_id from registry once
+    # strategy selection is enabled; currently placeholders live on EvaluationOutput only.
+    # TODO(phase12): Attach condition_vector via condition_encoder.encode_conditions(state)
+    # when the brain consumes it; no runtime logic changes in this layer.
 
     if not isinstance(state, MarketState):
         raise TypeError("state must be engine.types.MarketState")
@@ -1233,6 +1937,78 @@ def evaluate_with_causal(
             }
         )
 
+    strategy_id, entry_model_id = _extract_strategy_ids(state, market_state)
+
+    condition_vector = None
+    try:
+        condition_vector = encode_conditions(market_state) if market_state else None
+        if condition_vector:
+            logger.debug("Condition vector attached: %s", condition_vector)
+    except Exception:
+        condition_vector = None
+
+    decision_timestamp = (
+        datetime.now(timezone.utc)
+        .replace(microsecond=0)
+        .isoformat()
+        .replace("+00:00", "Z")
+    )
+    decision_frame = _build_decision_frame(
+        state=state,
+        market_state=market_state,
+        session_context=session_context,
+        condition_vector=condition_vector,
+        decision_timestamp=decision_timestamp,
+    )
+    if decision_frame:
+        decision_frame.entry_signals_present = _derive_entry_signals(
+            decision_frame, state, market_state
+        )
+        decision_frame.eligible_entry_models = get_eligible_entry_models(decision_frame)
+        _attach_entry_brain_shadow(decision_frame)
+
+    # Shadow brain lookup (read-only) and influence
+    brain_info = _lookup_brain_recommendation(
+        strategy_id, entry_model_id, condition_vector
+    )
+    brain_cfg = _load_brain_config()
+    safe_mode = _safe_mode_active()
+    risk_limit_hit = (
+        bool((state or {}).get("risk_limit_breached"))
+        if isinstance(state, dict)
+        else False
+    )
+    policy_allowed = True  # placeholder; if policy gate fails, this remains False
+
+    score_before_brain = eval_score
+    eval_score, brain_applied = _apply_brain_weighting(
+        score=eval_score,
+        brain_info=brain_info,
+        brain_cfg=brain_cfg,
+        safe_mode=safe_mode,
+        risk_limit_hit=risk_limit_hit,
+        policy_allowed=policy_allowed,
+    )
+    if brain_applied:
+        # Recompute decision from adjusted score for deterministic effect
+        if eval_score > 0.2:
+            decision = "buy"
+            reason = f"Brain-influenced BULLISH (score: {eval_score:.3f})"
+        elif eval_score < -0.2:
+            decision = "sell"
+            reason = f"Brain-influenced BEARISH (score: {eval_score:.3f})"
+        else:
+            decision = "hold"
+            reason = f"Brain-influenced NEUTRAL (score: {eval_score:.3f})"
+        confidence = clamp(abs(eval_score), 0.0, 1.0)
+        logger.debug(
+            "Brain influence: strategy_id=%s label=%s score_before=%.4f score_after=%.4f",
+            strategy_id,
+            brain_info.get("brain_label") if brain_info else None,
+            score_before_brain,
+            eval_score,
+        )
+
     result_payload = {
         "decision": decision,
         "confidence": confidence,
@@ -1246,6 +2022,35 @@ def evaluate_with_causal(
             "causal_eval": eval_score,
             "factors": factor_explanations,
         },
+        # Phase 12 attribution scaffolding (no behavior change)
+        "strategy_id": strategy_id,
+        "entry_model_id": entry_model_id,
+        "exit_model_id": None,
+        "condition_vector": condition_vector,
+        "ml_policy_version": None,
+        "brain_label": brain_info.get("brain_label") if brain_info else None,
+        "brain_prob_good": brain_info.get("brain_prob_good") if brain_info else None,
+        "brain_expected_reward": (
+            brain_info.get("brain_expected_reward") if brain_info else None
+        ),
+        "brain_sample_size": (
+            brain_info.get("brain_sample_size") if brain_info else None
+        ),
+        "brain_influence_applied": bool(brain_applied),
+        "brain_adjusted_score": eval_score if brain_applied else None,
+        "entry_signals_present": (
+            decision_frame.entry_signals_present if decision_frame else None
+        ),
+        "eligible_entry_models": (
+            decision_frame.eligible_entry_models if decision_frame else None
+        ),
+        "entry_brain_labels": (
+            decision_frame.entry_brain_labels if decision_frame else None
+        ),
+        "entry_brain_scores": (
+            decision_frame.entry_brain_scores if decision_frame else None
+        ),
+        "decision_frame": decision_frame.to_dict() if decision_frame else None,
     }
 
     try:
@@ -1347,10 +2152,7 @@ def evaluate_with_causal(
         entry = {
             "run_id": run_id,
             "decision_id": str(uuid.uuid4()),
-            "timestamp_utc": datetime.now(timezone.utc)
-            .replace(microsecond=0)
-            .isoformat()
-            .replace("+00:00", "Z"),
+            "timestamp_utc": decision_timestamp,
             "symbol": symbol,
             "timeframe": timeframe,
             "session_regime": str(session_label or "UNKNOWN"),
@@ -1367,6 +2169,36 @@ def evaluate_with_causal(
             "action": action_label,
             "outcome": None,
             "provenance": provenance,
+            "strategy_id": strategy_id,
+            "entry_model_id": entry_model_id,
+            "exit_model_id": None,
+            "condition_vector": condition_vector,
+            "ml_policy_version": None,
+            "brain_label": brain_info.get("brain_label") if brain_info else None,
+            "brain_prob_good": (
+                brain_info.get("brain_prob_good") if brain_info else None
+            ),
+            "brain_expected_reward": (
+                brain_info.get("brain_expected_reward") if brain_info else None
+            ),
+            "brain_sample_size": (
+                brain_info.get("brain_sample_size") if brain_info else None
+            ),
+            "brain_influence_applied": bool(brain_applied),
+            "brain_adjusted_score": eval_score if brain_applied else None,
+            "entry_signals_present": (
+                decision_frame.entry_signals_present if decision_frame else None
+            ),
+            "eligible_entry_models": (
+                decision_frame.eligible_entry_models if decision_frame else None
+            ),
+            "entry_brain_labels": (
+                decision_frame.entry_brain_labels if decision_frame else None
+            ),
+            "entry_brain_scores": (
+                decision_frame.entry_brain_scores if decision_frame else None
+            ),
+            "decision_frame": decision_frame.to_dict() if decision_frame else None,
         }
 
         position_size = None
@@ -1379,6 +2211,20 @@ def evaluate_with_causal(
             except Exception:
                 pass
 
+        _apply_shadow_brain_annotations(
+            strategy_id=strategy_id,
+            entry_model_id=entry_model_id,
+            condition_vector=condition_vector,
+            result_payload=result_payload,
+            entry=entry,
+        )
+
+        logger.debug(
+            "Decision attribution: strategy_id=%s entry_model_id=%s exit_model_id=%s",
+            entry.get("strategy_id"),
+            entry.get("entry_model_id"),
+            entry.get("exit_model_id"),
+        )
         _DECISION_LOGGER.log_decision(entry)
     except Exception as exc:  # pragma: no cover - logging must not break decision loop
         logger.debug("Decision logging skipped: %s", exc)

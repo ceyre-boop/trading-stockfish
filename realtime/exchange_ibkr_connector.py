@@ -293,6 +293,8 @@ class IBKRConnector(BaseConnector):
 
             self.last_heartbeat = datetime.now(timezone.utc)
             self.stats["updates_received"] += 1
+            self._record_market_data_timestamp(update.timestamp)
+            self._record_heartbeat(update.timestamp)
 
             return update
 
@@ -356,6 +358,8 @@ class IBKRConnector(BaseConnector):
             logger.warning("IBKR: Not connected, cannot send order")
             order.status = OrderStatus.REJECTED
             order.rejection_reason = "Not connected"
+            self._record_send_failure()
+            self._record_order_rejection()
             return None
 
         try:
@@ -403,6 +407,8 @@ class IBKRConnector(BaseConnector):
             order.status = OrderStatus.ERROR
             order.rejection_reason = str(e)
             self.stats["order_errors"] += 1
+            self._record_send_failure()
+            self._record_order_rejection()
             return None
 
     def cancel_order(self, order_id: str) -> bool:

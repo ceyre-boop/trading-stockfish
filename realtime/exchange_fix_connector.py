@@ -297,7 +297,7 @@ class FIXConnector(BaseConnector):
 
             # Route by type
             if msg_type == "1":  # Heartbeat
-                pass
+                self._record_heartbeat(datetime.now(timezone.utc))
             elif msg_type == "5":  # Logout
                 logger.info("FIX: Logout received")
                 self.set_status(ConnectorStatus.DISCONNECTED)
@@ -411,6 +411,7 @@ class FIXConnector(BaseConnector):
             )
 
             self.push_update(update)
+            self._record_market_data_timestamp(update.timestamp)
             self.stats["updates_received"] += 1
 
         except Exception as e:
@@ -500,6 +501,7 @@ class FIXConnector(BaseConnector):
             order.status = OrderStatus.ERROR
             order.rejection_reason = str(e)
             self.stats["order_errors"] += 1
+            self._record_send_failure()
             return None
 
     def cancel_order(self, order_id: str) -> bool:
@@ -583,6 +585,7 @@ class FIXConnector(BaseConnector):
                 if order_id in self.pending_orders:
                     del self.pending_orders[order_id]
                 self.stats["order_errors"] += 1
+                self._record_order_rejection()
 
             logger.info(
                 f"FIX: Execution {order_id}: {ord_status} {exec_qty} @ {exec_price}"

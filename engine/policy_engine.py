@@ -9,6 +9,9 @@ Implements a Stockfish-style policy engine that:
   4. Outputs discrete trading actions with target position sizes
   5. Provides full reasoning for every decision
 
+# Phase 12 note: strategy_id/entry_model_id/exit_model_id are placeholders only;
+# no strategy selection or runtime behavior changes are introduced in this layer.
+
 Philosophy: Like Stockfish evaluates chess positions and generates candidate moves,
 this engine evaluates market conditions and generates candidate trading actions.
 
