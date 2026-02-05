@@ -14,6 +14,10 @@ class ActionType(str, Enum):
 class DecisionAction:
     action_type: ActionType
     entry_model_id: Optional[str] = None
+    template_id: Optional[str] = None
+    eco_code: Optional[str] = None
+    template_family: Optional[str] = None
+    template_policy_label: Optional[str] = None
     direction: Optional[str] = None
     size_bucket: Optional[str] = None
     stop_structure: Optional[Dict[str, Any]] = None

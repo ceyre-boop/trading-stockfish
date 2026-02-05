@@ -23,6 +23,11 @@ FEATURE_COLUMNS: List[str] = [
     "stop_structure_json",
     "tp_structure_json",
     "manage_payload_json",
+    # template-aware features
+    "template_id",
+    "template_eco_code",
+    "template_family_one_hot",
+    "template_risk_profile",
 ]
 
 

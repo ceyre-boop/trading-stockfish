@@ -81,9 +81,10 @@ def adversarial_replay(
             logged_scores = frame_raw.get("entry_brain_scores") or {}
         chosen_entry = row.get("entry_model_id") or frame.chosen_entry_model_id
 
-        recomputed_eligible = get_eligible_entry_models(frame)
-        if not recomputed_eligible:
+        if logged_eligible:
             recomputed_eligible = list(logged_eligible)
+        else:
+            recomputed_eligible = get_eligible_entry_models(frame)
         selector_scores = score_entry_selector(
             frame, recomputed_eligible, entry_selector_artifacts
         )

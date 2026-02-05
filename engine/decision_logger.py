@@ -9,6 +9,7 @@ from .decision_actions import (
     DecisionOutcome,
     DecisionRecord,
 )
+from .live_telemetry import LiveDecisionTelemetry, emit_live_telemetry
 
 try:
     import jsonschema
@@ -37,6 +38,11 @@ class DecisionLogger:
 
     def _normalize(self, entry: Dict[str, Any]) -> Dict[str, Any]:
         normalized = dict(entry)
+        allowed_props = None
+        additional_props_allowed = True
+        if self._schema and isinstance(self._schema.get("properties"), dict):
+            allowed_props = set(self._schema["properties"].keys())
+            additional_props_allowed = self._schema.get("additionalProperties", True) is not False
         cv = normalized.get("condition_vector")
         if cv is not None and is_dataclass(cv):
             normalized["condition_vector"] = asdict(cv)
@@ -59,10 +65,131 @@ class DecisionLogger:
             "brain_adjusted_score",
             "entry_brain_labels",
             "entry_brain_scores",
+            "template_id",
+            "eco_code",
+            "template_family",
+            "template_policy_label",
         ]:
-            if key not in normalized:
+            if key not in normalized and (additional_props_allowed or (allowed_props and key in allowed_props)):
                 normalized[key] = None
+
+        # Bubble up template metadata from chosen_action if present
+        chosen = normalized.get("chosen_action")
+        if isinstance(chosen, dict):
+            if normalized.get("template_id") is None and (
+                additional_props_allowed or (allowed_props and "template_id" in allowed_props)
+            ):
+                normalized["template_id"] = chosen.get("template_id") or chosen.get(
+                    "entry_model_id"
+                )
+            if normalized.get("eco_code") is None and (
+                additional_props_allowed or (allowed_props and "eco_code" in allowed_props)
+            ):
+                normalized["eco_code"] = chosen.get("eco_code")
+            if normalized.get("template_family") is None and (
+                additional_props_allowed or (allowed_props and "template_family" in allowed_props)
+            ):
+                normalized["template_family"] = chosen.get("template_family")
+            if normalized.get("template_policy_label") is None and (
+                additional_props_allowed
+                or (allowed_props and "template_policy_label" in allowed_props)
+            ):
+                normalized["template_policy_label"] = chosen.get(
+                    "template_policy_label"
+                )
+
+        if not additional_props_allowed and allowed_props is not None:
+            normalized = {k: v for k, v in normalized.items() if k in allowed_props}
+
         return normalized
+
+    def log_decision(self, entry: Dict[str, Any]) -> None:
+        """Validate (optional) and append a single decision entry as JSONL."""
+
+        self._load_schema()
+        entry = self._normalize(entry)
+        if self._schema is not None and jsonschema is not None:
+            try:
+                jsonschema.validate(instance=entry, schema=self._schema)
+            except jsonschema.ValidationError as exc:  # pragma: no cover
+                raise ValueError(f"Decision entry failed validation: {exc.message}")
+
+        try:
+            self.log_path.parent.mkdir(parents=True, exist_ok=True)
+            line = json.dumps(entry, ensure_ascii=False)
+            with self.log_path.open("a", encoding="utf-8") as handle:
+                handle.write(line + "\n")
+        except Exception as exc:  # pragma: no cover
+            raise IOError(f"Failed to write decision log entry: {exc}")
+
+
+def log_live_decision(telemetry: LiveDecisionTelemetry) -> None:
+    """Thin wrapper around emit_live_telemetry for live/replay parity streams."""
+
+    try:
+        emit_live_telemetry(telemetry)
+    except Exception:
+        return
+
+
+def log_realtime_decision(decision_dict: Dict[str, Any]) -> None:
+    """Lightweight, schema-compatible logging hook for realtime intents.
+
+    This avoids touching execution. It normalizes to JSON-serializable form
+    and writes nothing by default; callers can wrap/redirect as needed.
+    """
+
+    try:
+        payload = dict(decision_dict) if isinstance(decision_dict, dict) else {}
+
+        def _normalize_action(action: Any) -> Any:
+            if action is None:
+                return None
+            if hasattr(action, "__dict__"):
+                return {k: v for k, v in action.__dict__.items()}
+            return action
+
+        payload["chosen_action"] = _normalize_action(payload.get("chosen_action"))
+        payload["ranked_actions"] = (
+            [(_normalize_action(a), s) for (a, s) in payload.get("ranked_actions", [])]
+            if isinstance(payload.get("ranked_actions"), list)
+            else []
+        )
+
+        # Bubble template metadata from chosen_action for deterministic logs
+        chosen = payload.get("chosen_action") or {}
+        if isinstance(chosen, dict):
+            payload.setdefault(
+                "template_id", chosen.get("template_id") or chosen.get("entry_model_id")
+            )
+            payload.setdefault("eco_code", chosen.get("eco_code"))
+            payload.setdefault("template_family", chosen.get("template_family"))
+            payload.setdefault(
+                "template_policy_label", chosen.get("template_policy_label")
+            )
+
+        if "safety_decision" in payload and isinstance(
+            payload["safety_decision"], dict
+        ):
+            sd = dict(payload["safety_decision"])
+            sd["final_action"] = _normalize_action(sd.get("final_action"))
+            payload["safety_decision"] = sd
+
+        if "environment" in payload and isinstance(payload["environment"], dict):
+            env = dict(payload["environment"])
+            health = env.get("health")
+            if isinstance(health, dict) and "timestamp" in health:
+                ts = health.get("timestamp")
+                if hasattr(ts, "isoformat"):
+                    health["timestamp"] = ts.isoformat()
+                env["health"] = health
+            payload["environment"] = env
+
+        # Attempt to serialize to ensure schema safety; discard output
+        json.dumps(payload, ensure_ascii=False)
+    except Exception:
+        # Intent-only logging should never raise.
+        return
 
 
 def _coerce_action_type(raw: Any) -> ActionType:
@@ -167,23 +294,3 @@ def build_decision_record(log_entry: Dict[str, Any]) -> DecisionRecord:
         outcome=outcome,
         metadata=metadata,
     )
-
-    def log_decision(self, entry: Dict[str, Any]) -> None:
-        """Validate (optional) and append a single decision entry as JSONL."""
-
-        entry = self._normalize(entry)
-
-        self._load_schema()
-        if self._schema is not None and jsonschema is not None:
-            try:
-                jsonschema.validate(instance=entry, schema=self._schema)
-            except jsonschema.ValidationError as exc:  # pragma: no cover
-                raise ValueError(f"Decision entry failed validation: {exc.message}")
-
-        try:
-            self.log_path.parent.mkdir(parents=True, exist_ok=True)
-            line = json.dumps(entry, ensure_ascii=False)
-            with self.log_path.open("a", encoding="utf-8") as handle:
-                handle.write(line + "\n")
-        except Exception as exc:  # pragma: no cover
-            raise IOError(f"Failed to write decision log entry: {exc}")

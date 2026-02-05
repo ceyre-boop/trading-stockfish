@@ -200,14 +200,16 @@ def _load_entry_brain_policy() -> pd.DataFrame:
                 df = pd.DataFrame()
 
     if not df.empty:
-        df = df.sort_values(
-            [
-                "entry_model_id",
-                "market_profile_state",
-                "session_profile",
-                "liquidity_bias_side",
-            ]
-        ).reset_index(drop=True)
+        required_cols = [
+            "entry_model_id",
+            "market_profile_state",
+            "session_profile",
+            "liquidity_bias_side",
+        ]
+        for col in required_cols:
+            if col not in df.columns:
+                df[col] = None
+        df = df.sort_values(required_cols).reset_index(drop=True)
     _ENTRY_BRAIN_POLICY_CACHE = df
     _ENTRY_BRAIN_POLICY_CACHE_KEY = cache_key
     return _ENTRY_BRAIN_POLICY_CACHE
