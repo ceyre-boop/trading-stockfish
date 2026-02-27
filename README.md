@@ -35,7 +35,7 @@ print(f"Regime breakdown: {result.regime_breakdown}")
 ## Modules
 
 ### Regime Detection (`regime/detector.py`)
-Classifies each bar into **LOW_VOL**, **NORMAL**, or **HIGH_VOL** using a configurable rolling realised-volatility window.
+Classifies each bar into **LOW_VOL**, **NORMAL**, or **HIGH_VOL** using a configurable rolling realized-volatility window.
 
 ### Risk Governance (`risk/governor.py`)
 - Fixed-fractional position sizing (Kelly-inspired)

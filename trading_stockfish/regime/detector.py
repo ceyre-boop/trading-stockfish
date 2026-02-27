@@ -6,7 +6,7 @@ Classifies each bar into one of three regimes:
   1 = NORMAL    (low_threshold ≤ σ < high_threshold)
   2 = HIGH_VOL  (σ ≥ high_threshold)
 
-Uses a configurable rolling window for realized volatility (annualised).
+Uses a configurable rolling window for realized volatility (annualized).
 """
 import numpy as np
 from dataclasses import dataclass, field
@@ -19,8 +19,8 @@ REGIME_HIGH   = 2
 @dataclass
 class RegimeConfig:
     window: int = 20            # bars used for rolling vol
-    low_threshold: float = 0.10 # annualised vol below which → LOW_VOL
-    high_threshold: float = 0.25 # annualised vol above which → HIGH_VOL
+    low_threshold: float = 0.10 # annualized vol below which → LOW_VOL
+    high_threshold: float = 0.25 # annualized vol above which → HIGH_VOL
     bars_per_year: int = 252     # trading bars per year (for annualisation)
 
 
@@ -31,7 +31,7 @@ class RegimeDetector:
         self.config = config or RegimeConfig()
 
     def rolling_volatility(self, prices: Sequence[float]) -> np.ndarray:
-        """Return annualised rolling realised volatility for each bar."""
+        """Return annualized rolling realized volatility for each bar."""
         px = np.asarray(prices, dtype=float)
         if len(px) < 2:
             return np.zeros(len(px))
